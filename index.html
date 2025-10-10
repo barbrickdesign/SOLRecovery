@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Ritual Recovery Portal</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://cdn.jsdelivr.net/npm/@solana/web3.js@latest/lib/index.iife.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@solana/spl-token@latest/lib/index.iife.min.js"></script>
+  <style>
+    body {
+      font-family: 'Orbitron', sans-serif;
+      background: #0b0c10;
+      color: #c5c6c7;
+      text-align: center;
+      padding: 20px;
+    }
+    .glyph {
+      animation: pulse 2s infinite;
+      color: #66fcf1;
+      font-size: 2em;
+      margin-bottom: 20px;
+    }
+    @keyframes pulse {
+      0% { opacity: 0.5; }
+      50% { opacity: 1; }
+      100% { opacity: 0.5; }
+    }
+    .coin-list {
+      margin-top: 20px;
+    }
+    .coin-item {
+      background: #1f2833;
+      padding: 10px;
+      margin: 5px;
+      border-radius: 5px;
+    }
+    button {
+      background: #45a29e;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      margin: 10px;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #66fcf1;
+      color: black;
+    }
+  </style>
+</head>
+<body>
+  <div class="glyph">Begin the Cleansing</div>
+  <button onclick="startRecovery()">Recover My SOL</button>
+  <div id="coinList" class="coin-list"></div>
+  <button onclick="sendReferral()">Refer Friends</button>
+
+  <script>
+    const connection = new solanaWeb3.Connection("https://api.mainnet-beta.solana.com");
+    const FEE_WALLET = new solanaWeb3.PublicKey("5hSWosj58ki4A6hSfQrvteQU5QvyCWmhHn4AuqgaQzqr");
+
+    async function startRecovery() {
+      const provider = window.solana;
+      await provider.connect();
+      const wallet = provider.publicKey;
+
+      const referrer = new URLSearchParams(window.location.search).get("ref");
+      const referralChain = referrer ? [new solanaWeb3.PublicKey(referrer)] : [];
+
+      const tokenAccounts = await connection.getParsedTokenAccountsByOwner(wallet, {
+        programId: new solanaWeb3.PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
+      });
+
+      const emptyAccounts = tokenAccounts.value.filter(
+        acc => acc.account.data.parsed.info.tokenAmount.uiAmount === 0
+      );
+
+      let transaction = new solanaWeb3.Transaction();
+      let estimatedRefund = 0;
+
+      for (const acc of emptyAccounts) {
+        transaction.add(
+          splToken.createCloseAccountInstruction(
+            new solanaWeb3.PublicKey(acc.pubkey),
+            wallet,
+            wallet
+          )
+        );
+        estimatedRefund += 0.00204;
+        document.getElementById("coinList").innerHTML += `<div class="coin-item">Banished: ${acc.pubkey}</div>`;
+      }
+
+      const totalFee = Math.floor(estimatedRefund * 0.05 * 1e9);
+      let remaining = totalFee;
+
+      for (const ref of referralChain) {
+        const cut = Math.floor(remaining * 0.2);
+        transaction.add(solanaWeb3.SystemProgram.transfer({
+          fromPubkey: wallet,
+          toPubkey: ref,
+          lamports: cut
+        }));
+        remaining -= cut;
+      }
+
+      transaction.add(solanaWeb3.SystemProgram.transfer({
+        fromPubkey: wallet,
+        toPubkey: FEE_WALLET,
+        lamports: remaining
+      }));
+
+      const signature = await provider.signAndSendTransaction(transaction);
+      await connection.confirmTransaction(signature, "processed");
+
+      alert(`Recovery complete. ${estimatedRefund.toFixed(4)} SOL reclaimed.`);
+      mintNFT(wallet);
+    }
+
+    async function mintNFT(wallet) {
+      // Placeholder: integrate with Metaplex or Candy Machine
+      console.log("Minting NFT badge for", wallet.toBase58());
+    }
+
+    function sendReferral() {
+      const provider = window.solana;
+      const refLink = `${window.location.origin}?ref=${provider.publicKey.toBase58()}`;
+      const subject = encodeURIComponent("Recover Your SOL – Ritual Portal");
+      const body = encodeURIComponent(`I just recovered SOL from unused accounts using this ritual portal:\n\n${refLink}\n\nClick to begin your cleansing and earn rewards.`);
+      window.location.href = `mailto:?subject=${subject}&body=${body}`;
+    }
+  </script>
+</body>
+</html>
