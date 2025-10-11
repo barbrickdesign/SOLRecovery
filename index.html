@@ -1,50 +1,44 @@
-index.html (updated — configurable RPC, vault address prefilled, improved diagnostics)
-
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>RefundYourSOL — Updated Clone</title>
-  <style>
-    :root{--bg:#041024;--card:#071427;--muted:#97a6bd;--accent:#60a5fa;--success:#34d399;--danger:#fb7185}
-    html,body{height:100%;margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial;background:linear-gradient(180deg,#031226 0%, #071429 100%);color:#e6eef8}
-    .wrap{max-width:980px;margin:12px auto;padding:14px}
-    .card{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border-radius:12px;padding:12px;margin-bottom:12px;border:1px solid rgba(255,255,255,0.03)}
-    h1{font-size:18px;margin:0}
-    .muted{color:var(--muted);font-size:13px}
-    .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-    button{padding:10px 12px;border-radius:10px;border:0;background:linear-gradient(90deg,var(--accent),#38bdf8);color:#022;font-weight:700}
-    button.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted)}
-    .small{font-size:12px;color:var(--muted)}
-    table{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px}
-    th,td{padding:8px 6px;text-align:left;border-bottom:1px dashed rgba(255,255,255,0.02)}
-    .center{text-align:center}
-    .danger{color:var(--danger);font-weight:700}
-    pre{background:#021026;padding:10px;border-radius:8px;color:#cfe9ff;max-height:280px;overflow:auto}
-    input[type=text]{width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit}
-    @media (max-width:640px){ .row{flex-direction:column;align-items:flex-start} button{width:100%} a.link{word-break:break-all} }
-    a.link{color:var(--accent);text-decoration:none}
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>RefundYourSOL — Refund Only (Working)</title>
+<style>
+  :root{--bg:#041024;--card:#071427;--muted:#97a6bd;--accent:#60a5fa;--danger:#fb7185}
+  html,body{height:100%;margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial;background:linear-gradient(180deg,#031226 0%, #071429 100%);color:#e6eef8}
+  .wrap{max-width:980px;margin:14px auto;padding:14px}
+  .card{background:rgba(255,255,255,0.02);border-radius:10px;padding:12px;margin-bottom:12px;border:1px solid rgba(255,255,255,0.03)}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  button{padding:10px 12px;border-radius:10px;border:0;background:linear-gradient(90deg,var(--accent),#38bdf8);color:#022;font-weight:700}
+  button.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted)}
+  input[type=text]{width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit}
+  table{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px}
+  th,td{padding:8px 6px;text-align:left;border-bottom:1px dashed rgba(255,255,255,0.03)}
+  pre{background:#021026;padding:10px;border-radius:8px;color:#cfe9ff;max-height:260px;overflow:auto}
+  .muted{color:var(--muted);font-size:13px}
+  .small{font-size:12px;color:var(--muted)}
+  @media (max-width:640px){ .row{flex-direction:column;align-items:flex-start} button{width:100%} }
+  a.link{color:var(--accent);text-decoration:none;word-break:break-all}
+</style>
 </head>
 <body>
   <div class="wrap">
     <div class="card">
-      <h1>RefundYourSOL — Updated Clone</h1>
-      <div class="muted">Configurable RPC and donation vault. Simulator + refund-only close flow with better diagnostics.</div>
+      <h2 style="margin:0">RefundYourSOL — Refund Only (Working)</h2>
+      <div class="muted">Connect Phantom, scan for zero-balance SPL accounts, and close them to recover rent (donation optional).</div>
     </div>
 
     <div class="card">
       <div class="row" style="justify-content:space-between;align-items:center">
-        <div style="flex:1">
-          <button id="connectBtn">Connect Wallet</button>
-        </div>
-        <div style="width:220px">
-          <label class="small muted"><input id="modeToggle" type="checkbox" /> <span id="modeLabel">Simulator (preview only)</span></label>
+        <button id="connectBtn">Connect Wallet</button>
+        <div style="min-width:220px">
+          <div class="small muted">RPC (change for reliability)</div>
+          <input id="rpcInput" type="text" value="https://api.mainnet-beta.solana.com"/>
         </div>
       </div>
 
-      <div style="margin-top:10px" class="row">
+      <div class="row" style="margin-top:10px;gap:12px">
         <div style="flex:1">
           <div class="small muted">Connected</div>
           <div id="walletAddr" style="font-weight:700">Not connected</div>
@@ -61,120 +55,105 @@ index.html (updated — configurable RPC, vault address prefilled, improved diag
     </div>
 
     <div class="card">
-      <div class="row" style="gap:12px;align-items:center">
-        <div style="flex:1">
-          <div class="small muted">RPC Endpoint (change to your QuickNode/Alchemy/Custom)</div>
-          <input id="rpcInput" type="text" value="https://api.mainnet-beta.solana.com"/>
-        </div>
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <strong>Zero-Balance Token Accounts</strong>
+        <div class="small muted">Only accounts with tokenAmount.amount == "0" are eligible</div>
+      </div>
+
+      <table>
+        <thead><tr><th style="width:36px"><input id="selectAll" type="checkbox"/></th><th>Token Account</th><th>Mint</th><th>Lamports</th><th class="center">Action</th></tr></thead>
+        <tbody id="accountsBody"><tr><td colspan="5" class="small muted center">Connect and press Scan</td></tr></tbody>
+      </table>
+
+      <div style="margin-top:12px" class="row">
+        <button id="scanBtn" class="ghost" disabled>Scan</button>
+        <button id="closeBtn" class="ghost" disabled>Close Selected (Refund)</button>
+        <div style="flex:1"></div>
         <div style="width:220px">
-          <div class="small muted">Donation Vault Pubkey</div>
-          <input id="donationInput" type="text" value="5hSWosj58ki4A6hSfQrvteQU5QvyCWmhHn4AuqgaQzqr"/>
-        </div>
-        <div style="width:120px">
-          <div class="small muted">Donation %</div>
+          <div class="small muted">Donation pubkey (optional)</div>
+          <input id="donationInput" type="text" placeholder="Donation pubkey (optional)"/>
+          <div class="small muted" style="margin-top:6px">Donation %</div>
           <input id="donationPct" type="text" value="15"/>
         </div>
       </div>
-      <div class="small muted" style="margin-top:6px">Set RPC to a dedicated provider to avoid rate limits. Donation address prefilled with your vault pubkey.</div>
-      <div style="margin-top:8px" class="row">
-        <button id="applyConfigBtn" class="ghost">Apply Config</button>
-        <button id="refreshBtn" class="ghost">Refresh Inventory</button>
-        <button id="previewBtn" class="ghost">Preview Transaction</button>
-        <button id="closeZeroBtn" class="ghost">Close Zero-balance Accounts</button>
-        <div style="margin-left:auto" class="small muted">Mode: <strong id="currentMode">Simulator</strong></div>
-      </div>
-    </div>
-
-    <div class="card">
-      <strong>Token Inventory</strong>
-      <table>
-        <thead><tr><th style="width:36px"></th><th>Token Account</th><th>Mint</th><th>Amount</th><th>Lamports</th><th class="center">Actions</th></tr></thead>
-        <tbody id="inventoryBody"><tr><td colspan="6" class="small muted center">Connect wallet to list accounts</td></tr></tbody>
-      </table>
-      <div class="small muted" style="margin-top:8px">Tap Details for account info. The simulator builds unsigned tx that is NOT broadcast.</div>
-    </div>
-
-    <div class="card">
-      <strong>Preview / Debug Console</strong>
-      <pre id="debug">Ready.</pre>
     </div>
 
     <div class="card">
       <strong>Transactions</strong>
       <table>
-        <thead><tr><th>Signature</th><th>Recovered (SOL)</th><th>Donation (SOL)</th><th>Time</th></tr></thead>
+        <thead><tr><th>Signature</th><th>Recovered</th><th>Donation</th><th>Time</th></tr></thead>
         <tbody id="txBody"><tr><td colspan="4" class="small muted center">No transactions yet</td></tr></tbody>
       </table>
     </div>
 
+    <div class="card">
+      <strong>Debug Console</strong>
+      <pre id="debug">Ready. Connect, then Scan.</pre>
+    </div>
+
     <div class="card small muted">
-      <div class="danger">Safety: Simulator never signs/broadcasts burn txs. Refund-only will only close zero-balance SPL token accounts you own and requires wallet signature.</div>
+      <div class="danger">Only zero-balance SPL token accounts will be closed. This explicitly does not burn tokens.</div>
     </div>
   </div>
 
-  <!-- solana web libs -->
+  <!-- Solana libs (IIFE) -->
   <script src="https://unpkg.com/@solana/web3.js@1.76.0/lib/index.iife.min.js"></script>
   <script src="https://unpkg.com/@solana/spl-token@0.3.5/lib/index.iife.js"></script>
 
   <script>
   (function(){
-    // Config (editable UI fields override these defaults on Apply)
-    let RPC_URL = 'https://api.mainnet-beta.solana.com';
-    let DONATION_PUBKEY = '5hSWosj58ki4A6hSfQrvteQU5QvyCWmhHn4AuqgaQzqr';
-    let DONATION_RATE = 0.15;
-
-    // IIFE globals
+    // Config defaults
+    let RPC_URL = document.getElementById('rpcInput').value.trim() || 'https://api.mainnet-beta.solana.com';
     const { Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } = solanaWeb3;
     const { createCloseAccountInstruction, TOKEN_PROGRAM_ID } = splToken;
 
-    // Default connection
     let conn = new Connection(RPC_URL, 'confirmed');
 
-    // UI refs
+    // UI elements
     const connectBtn = document.getElementById('connectBtn');
-    const modeToggle = document.getElementById('modeToggle');
-    const modeLabel = document.getElementById('modeLabel');
-    const currentMode = document.getElementById('currentMode');
-    const rpcInput = document.getElementById('rpcInput');
-    const donationInput = document.getElementById('donationInput');
-    const donationPct = document.getElementById('donationPct');
-    const applyConfigBtn = document.getElementById('applyConfigBtn');
-    const refreshBtn = document.getElementById('refreshBtn');
-    const previewBtn = document.getElementById('previewBtn');
-    const closeZeroBtn = document.getElementById('closeZeroBtn');
     const walletAddrEl = document.getElementById('walletAddr');
     const solBalanceEl = document.getElementById('solBalance');
     const tokenCountEl = document.getElementById('tokenCount');
-    const inventoryBody = document.getElementById('inventoryBody');
-    const debugEl = document.getElementById('debug');
+    const scanBtn = document.getElementById('scanBtn');
+    const closeBtn = document.getElementById('closeBtn');
+    const accountsBody = document.getElementById('accountsBody');
     const txBody = document.getElementById('txBody');
+    const debugEl = document.getElementById('debug');
+    const selectAll = document.getElementById('selectAll');
+    const rpcInput = document.getElementById('rpcInput');
+    const donationInput = document.getElementById('donationInput');
+    const donationPctInput = document.getElementById('donationPct');
 
     // State
     let provider = null;
     let publicKey = null;
-    let tokenAccounts = []; // objects with parsed + lamports
+    let eligibleAccounts = []; // {pubkey, mint, lamports, owner}
 
     // Helpers
     function dbg(...args){ const t='['+new Date().toISOString()+'] '; debugEl.textContent = t + args.map(a=>(typeof a==='object'?JSON.stringify(a):String(a))).join(' ') + "\\n" + debugEl.textContent; console.log(...args); }
     function short(s){ s=String(s); return s.slice(0,4)+'…'+s.slice(-4); }
     function lamportsToSol(l){ return Number(l)/LAMPORTS_PER_SOL; }
     function fmtSOL(n){ return Number(n).toFixed(6) + ' SOL'; }
-    function safePubkey(p){ try { return new PublicKey(p); } catch(e){ return null; } }
+    function safePubkey(s){ try { return new PublicKey(s); } catch(e) { return null; } }
 
-    // Provider injection wait (mobile)
+    // Provider injection wait (mobile friendly)
     function waitForProvider(timeout = 3000){
       return new Promise(resolve=>{
         if(window.solana && window.solana.isPhantom) return resolve(window.solana);
         let resolved=false;
-        const interval = setInterval(()=>{ if(window.solana && window.solana.isPhantom){ clearInterval(interval); resolved=true; dbg('provider injected'); resolve(window.solana); } },200);
+        const interval = setInterval(()=>{
+          if(window.solana && window.solana.isPhantom){
+            clearInterval(interval); resolved=true; dbg('provider injected'); resolve(window.solana);
+          }
+        },200);
         setTimeout(()=>{ if(!resolved){ clearInterval(interval); dbg('provider injection timed out'); resolve(null); } }, timeout);
       });
     }
 
+    // Deep-link fallback for mobile
     function openDeepLink(){
-      const url = `https://phantom.app/ul/v1/connect?app_url=${encodeURIComponent(location.origin)}&redirect_link=${encodeURIComponent(location.href)}`;
-      dbg('Opening deep link to wallet');
-      window.open(url, '_blank');
+      const phantomUrl = `https://phantom.app/ul/v1/connect?app_url=${encodeURIComponent(location.origin)}&redirect_link=${encodeURIComponent(location.href)}`;
+      dbg('Opening wallet deep link'); window.open(phantomUrl, '_blank');
     }
 
     async function ensureProvider(){
@@ -184,65 +163,74 @@ index.html (updated — configurable RPC, vault address prefilled, improved diag
       return null;
     }
 
+    // Connect flow with trusted restore and explicit
     async function connectWallet(){
-      connectBtn.disabled = true; connectBtn.textContent = 'Connecting...'; dbg('connect: ensure provider');
+      connectBtn.disabled = true; connectBtn.textContent = 'Connecting...'; dbg('Connect: ensuring provider');
       const p = await ensureProvider();
-      if(!p){ dbg('No provider; opening deep link'); connectBtn.textContent = 'Open Wallet'; openDeepLink(); connectBtn.disabled = false; return; }
+      if(!p){ dbg('No provider; deep link'); connectBtn.textContent='Open Wallet'; openDeepLink(); connectBtn.disabled=false; return; }
       provider = p;
-      try{
+      try {
         dbg('Trying trusted connect');
         const resp = await provider.connect({ onlyIfTrusted:true });
         if(resp && resp.publicKey){ publicKey = resp.publicKey; onConnected(); dbg('Trusted connect ok', publicKey.toString()); return; }
-      }catch(e){ dbg('trusted connect fail', e && (e.message||e)); }
-      try{
+      } catch(e){ dbg('trusted connect failed', e && (e.message||e)); }
+      try {
         dbg('Request explicit connect');
         const resp = await provider.connect();
         publicKey = resp.publicKey || provider.publicKey;
         if(!publicKey && provider.publicKey) publicKey = provider.publicKey;
-        if(publicKey){ onConnected(); dbg('Explicit connect', publicKey.toString()); return; }
+        if(publicKey){ onConnected(); dbg('Explicit connect ok', publicKey.toString()); return; }
         throw new Error('No publicKey returned');
-      }catch(err){
-        dbg('Connect failed', err && (err.message||err)); connectBtn.disabled=false; connectBtn.textContent='Connect Wallet';
+      } catch(err) {
+        dbg('Connect failed/rejected', err && (err.message||err));
+        connectBtn.disabled = false; connectBtn.textContent = 'Connect Wallet';
+        alert('Connect was rejected or failed. Open Phantom and approve connection.');
       }
     }
 
     function onConnected(){
       walletAddrEl.textContent = publicKey.toString();
-      connectBtn.textContent = 'Connected'; connectBtn.disabled = true;
-      refreshInventory();
+      connectBtn.textContent = 'Connected';
+      connectBtn.disabled = true;
+      scanBtn.disabled = false;
+      rpcInput.disabled = false;
+      dbg('Connected: ' + publicKey.toString());
+      // try initial inventory refresh
+      refreshSolBalance().catch(e=>dbg('balance fetch error', e && (e.message||e)));
     }
 
-    // Apply UI config (RPC URL, donation)
-    applyConfigBtn.onclick = () => {
-      const r = rpcInput.value.trim(); const d = donationInput.value.trim(); const pct = Number(donationPct.value);
-      if(r) RPC_URL = r;
-      if(d) DONATION_PUBKEY = d;
-      if(!Number.isNaN(pct) && pct >= 0 && pct <= 100) DONATION_RATE = pct / 100; else donationPct.value = (DONATION_RATE*100).toString();
-      dbg('Applied config', { RPC_URL, DONATION_PUBKEY, DONATION_RATE });
-      conn = new Connection(RPC_URL, 'confirmed');
-      alert('Config applied. Use Refresh Inventory to re-query RPC.');
-    };
-
-    // Refresh inventory: SOL balance + parsed token accounts + lamports via getMultipleAccountsInfo
-    refreshBtn.onclick = refreshInventory;
-    async function refreshInventory(){
-      if(!publicKey){ dbg('refresh aborted: not connected'); alert('Connect wallet first'); return; }
-      dbg('Refreshing inventory for', publicKey.toString());
-      inventoryBody.innerHTML = '<tr><td colspan="6" class="small muted center">Loading...</td></tr>';
-      try{
+    // Refresh SOL balance only
+    async function refreshSolBalance(){
+      if(!publicKey) return;
+      try {
         const lam = await conn.getBalance(publicKey, 'confirmed');
         solBalanceEl.textContent = fmtSOL(lamportsToSol(lam));
-        // parsed token accounts
+      } catch(e){ dbg('getBalance failed', e && (e.message||e)); solBalanceEl.textContent = '—'; }
+    }
+
+    // Scan for zero-balance token accounts (owns by wallet)
+    scanBtn.onclick = async function scan(){
+      if(!publicKey){ alert('Connect wallet first'); return; }
+      // allow updating RPC if user changed input
+      const newRpc = rpcInput.value.trim();
+      if(newRpc && newRpc !== RPC_URL){ RPC_URL = newRpc; conn = new Connection(RPC_URL,'confirmed'); dbg('RPC updated to', RPC_URL); }
+      scanBtn.disabled = true; closeBtn.disabled = true;
+      accountsBody.innerHTML = '<tr><td colspan="5" class="small muted center">Scanning token accounts...</td></tr>';
+      dbg('Scanning token accounts for', publicKey.toString());
+      eligibleAccounts = [];
+      try {
         const parsed = await conn.getParsedTokenAccountsByOwner(publicKey, { programId: TOKEN_PROGRAM_ID });
         const accounts = parsed.value || [];
         dbg('Parsed token accounts count', accounts.length);
         if(!accounts.length){
-          inventoryBody.innerHTML = '<tr><td colspan="6" class="small muted center">No token accounts</td></tr>';
-          tokenCountEl.textContent = '0'; tokenAccounts = []; return;
+          accountsBody.innerHTML = '<tr><td colspan="5" class="small muted center">No token accounts found</td></tr>';
+          tokenCountEl.textContent = '0';
+          scanBtn.disabled = false; return;
         }
-        // batch fetch account infos
+
+        // batch fetch account infos for lamports
         const pubkeys = accounts.map(v => new PublicKey(v.pubkey));
-        const unique = [...new Map(pubkeys.map(p=>[p.toBase58(), p])).values()];
+        const unique = [...new Map(pubkeys.map(p => [p.toBase58(), p])).values()];
         const accountInfos = {};
         const BATCH = 100;
         for(let i=0;i<unique.length;i+=BATCH){
@@ -250,180 +238,152 @@ index.html (updated — configurable RPC, vault address prefilled, improved diag
           const infos = await conn.getMultipleAccountsInfo(slice);
           for(let j=0;j<slice.length;j++) accountInfos[slice[j].toBase58()] = infos[j];
         }
-        tokenAccounts = [];
-        for(const v of accounts){
-          const info = v.account.data.parsed?.info;
-          if(!info) continue;
-          const ta = info.tokenAmount || {};
-          const amountRaw = ta.amount || "0";
-          const decimals = ta.decimals ?? 0;
-          const uiAmount = ta.uiAmount ?? 0;
-          const lamInfo = accountInfos[v.pubkey];
-          const lamports = lamInfo ? lamInfo.lamports : 0;
-          tokenAccounts.push({ pubkey: v.pubkey, mint: info.mint, owner: info.owner, amountUi: uiAmount, amountRaw, decimals, lamports, parsed: info });
+
+        // filter zero token amount and owner equals our wallet
+        for(const item of accounts){
+          const parsedInfo = item.account.data.parsed?.info;
+          if(!parsedInfo) continue;
+          const amountRaw = parsedInfo.tokenAmount?.amount || "0";
+          const isZero = BigInt(amountRaw) === 0n;
+          if(!isZero) continue;
+          if(parsedInfo.owner !== publicKey.toString()) continue;
+          const onchain = accountInfos[item.pubkey];
+          const lamports = onchain ? onchain.lamports : 0;
+          eligibleAccounts.push({ pubkey: item.pubkey, mint: parsedInfo.mint, lamports, owner: parsedInfo.owner });
         }
-        tokenAccounts.sort((a,b)=>b.lamports - a.lamports);
-        renderInventory();
-      }catch(e){
-        dbg('refreshInventory failed', e && (e.message||e));
-        inventoryBody.innerHTML = '<tr><td colspan="6" class="small muted center">Failed to load accounts (see debug)</td></tr>';
+
+        eligibleAccounts.sort((a,b)=>b.lamports - a.lamports);
+        renderEligibleAccounts();
+        dbg('Scan complete, eligible accounts', eligibleAccounts.length);
+      } catch(e){
+        dbg('Scan failed', e && (e.message||e));
+        accountsBody.innerHTML = '<tr><td colspan="5" class="small muted center">Scan failed; check debug console</td></tr>';
+      } finally {
+        scanBtn.disabled = false;
       }
-    }
-
-    function renderInventory(){
-      if(!tokenAccounts.length){ inventoryBody.innerHTML = '<tr><td colspan="6" class="small muted center">No token accounts</td></tr>'; tokenCountEl.textContent='0'; return; }
-      tokenCountEl.textContent = String(tokenAccounts.length);
-      const rows = tokenAccounts.map((t, idx) => `
-        <tr data-idx="${idx}">
-          <td><input type="checkbox" class="sel" data-idx="${idx}"/></td>
-          <td title="${t.pubkey}">${short(t.pubkey)}</td>
-          <td title="${t.mint}">${short(t.mint)}</td>
-          <td>${t.amountUi}</td>
-          <td>${t.lamports}</td>
-          <td class="center"><button class="detailsBtn" data-idx="${idx}" style="padding:6px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:var(--muted)">Details</button></td>
-        </tr>`).join('');
-      inventoryBody.innerHTML = rows;
-      document.querySelectorAll('.detailsBtn').forEach(b => b.onclick = ()=>{
-        const idx = Number(b.dataset.idx);
-        showDetails(idx);
-      });
-    }
-
-    function showDetails(idx){
-      const t = tokenAccounts[idx]; if(!t) return;
-      const info = [
-        'Token Account: ' + t.pubkey,
-        'Mint: ' + t.mint,
-        'Owner: ' + t.owner,
-        'Amount UI: ' + t.amountUi,
-        'Amount raw: ' + t.amountRaw,
-        'Decimals: ' + t.decimals,
-        'Lamports (account): ' + t.lamports
-      ].join('\\n');
-      dbg(info); alert(info);
-    }
-
-    // Simulator: build unsigned tx preview for selected accounts (closeAccount instructions)
-    previewBtn.onclick = async () => {
-      const sim = modeToggle.checked;
-      modeLabel.textContent = sim ? 'Simulator (preview only)' : 'Refund-only mode';
-      currentMode.textContent = sim ? 'Simulator' : 'Refund-only';
-      if(!sim){ alert('Switch to Simulator mode to preview unsigned transactions.'); return; }
-      const checked = Array.from(document.querySelectorAll('.sel')).filter(c=>c.checked).map(c=>Number(c.dataset.idx));
-      if(!checked.length){ alert('Select at least one token account to preview'); return; }
-      dbg('Building preview for', checked);
-      const tx = new Transaction(); const actions = [];
-      for(const idx of checked){
-        const t = tokenAccounts[idx]; if(!t) continue;
-        const tokenAccPub = new PublicKey(t.pubkey);
-        const closeIx = createCloseAccountInstruction(tokenAccPub, publicKey || new PublicKey('11111111111111111111111111111111'), t.owner ? new PublicKey(t.owner) : undefined, []);
-        actions.push({ type:'closeAccount', tokenAccount: t.pubkey, mint: t.mint, lamports: t.lamports });
-        tx.add(closeIx);
-      }
-      const recent = await conn.getRecentBlockhash();
-      tx.recentBlockhash = recent.blockhash;
-      if(publicKey) tx.feePayer = publicKey;
-      let serialized = '(unable to serialize)';
-      try {
-        const ser = tx.serialize({ requireAllSignatures:false, verifySignatures:false });
-        serialized = btoa(String.fromCharCode(...ser));
-      } catch(e){ dbg('serialize unsigned tx failed', e && (e.message||e)); }
-      const previewText = [
-        '=== Simulator Preview (NO BROADCAST) ===',
-        'Selected accounts: ' + checked.map(i=>tokenAccounts[i].pubkey).join(', '),
-        'Actions: ' + JSON.stringify(actions, null, 2),
-        '',
-        'Unsigned transaction base64:',
-        serialized
-      ].join('\\n\\n');
-      dbg('Preview built', actions);
-      alert(previewText.substring(0,4000) + (previewText.length>4000 ? '\\n\\n(Preview truncated; full details in debug console)' : ''));
     };
 
-    // Refund-only closure: only zero-balance accounts, donation transfer in same tx
-    closeZeroBtn.onclick = async () => {
-      const sim = modeToggle.checked;
-      if(sim){ alert('Simulator mode active; toggle off to execute refund-only closure. Use Preview to inspect first.'); return; }
+    function renderEligibleAccounts(){
+      if(!eligibleAccounts.length){
+        accountsBody.innerHTML = '<tr><td colspan="5" class="small muted center">No zero-balance token accounts found.</td></tr>';
+        tokenCountEl.textContent = '0';
+        closeBtn.disabled = true;
+        selectAll.checked = false;
+        return;
+      }
+      tokenCountEl.textContent = String(eligibleAccounts.length);
+      const rows = eligibleAccounts.map((a, idx) => `
+        <tr data-idx="${idx}">
+          <td><input type="checkbox" class="sel" data-idx="${idx}"/></td>
+          <td title="${a.pubkey}">${short(a.pubkey)}</td>
+          <td title="${a.mint}">${short(a.mint)}</td>
+          <td>${a.lamports}</td>
+          <td class="center"><button class="detailBtn" data-idx="${idx}" style="padding:6px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:var(--muted)">Details</button></td>
+        </tr>`).join('');
+      accountsBody.innerHTML = rows;
+      document.querySelectorAll('.detailBtn').forEach(b=>b.onclick = ()=>{
+        const idx = Number(b.dataset.idx);
+        const a = eligibleAccounts[idx];
+        alert('Token account: ' + a.pubkey + '\\nMint: ' + a.mint + '\\nLamports: ' + a.lamports + '\\nOwner: ' + a.owner);
+      });
+      // wire checkboxes
+      document.querySelectorAll('.sel').forEach(cb => cb.onchange = () => {
+        const any = Array.from(document.querySelectorAll('.sel')).some(c => c.checked);
+        closeBtn.disabled = !any;
+      });
+      selectAll.checked = false;
+      selectAll.onchange = () => {
+        const on = selectAll.checked;
+        document.querySelectorAll('.sel').forEach(c => c.checked = on);
+        const any = on;
+        closeBtn.disabled = !any;
+      };
+      closeBtn.disabled = false;
+    }
+
+    // Close selected zero-balance accounts and optionally send donation (from recovered lamports)
+    closeBtn.onclick = async function closeSelected(){
       if(!publicKey || !provider){ alert('Connect wallet first'); return; }
       const checked = Array.from(document.querySelectorAll('.sel')).filter(c=>c.checked).map(c=>Number(c.dataset.idx));
-      if(!checked.length){ alert('Select at least one token account'); return; }
-      const zeroIdx = checked.filter(i => tokenAccounts[i] && BigInt(tokenAccounts[i].amountRaw || "0") === 0n);
-      if(!zeroIdx.length){ alert('No zero-balance accounts selected; refund-only closes only accounts with tokenAmount == 0'); return; }
-      const donationAddr = donationInput.value.trim() || DONATION_PUBKEY;
-      const donationPub = safePubkey(donationAddr);
-      if(!donationPub){ if(!confirm('Donation address invalid; continue without donation?')) return; }
-      let totalLamports = 0n; zeroIdx.forEach(i => totalLamports += BigInt(tokenAccounts[i].lamports || 0));
-      const donationLamports = donationPub ? Math.floor(Number(totalLamports) * DONATION_RATE) : 0;
+      if(!checked.length){ alert('Select at least one account'); return; }
+      // compute total lamports
+      let totalLamports = 0n;
+      const accountsToClose = checked.map(i => eligibleAccounts[i]).filter(Boolean);
+      accountsToClose.forEach(a=> totalLamports += BigInt(a.lamports || 0));
+      const donationPct = Number(donationPctInput.value) || 0;
+      const donationPubKeyInput = (donationInput.value || '').trim();
+      const donationPubKey = donationPubKeyInput ? safePubkey(donationPubKeyInput) : null;
+      const donationLamports = donationPubKey ? Math.floor(Number(totalLamports) * (donationPct/100)) : 0;
       const totalSol = lamportsToSol(Number(totalLamports));
       const donationSol = lamportsToSol(donationLamports);
       const userReceive = totalSol - donationSol;
-      if(!confirm(`Close ${zeroIdx.length} zero-balance account(s)?\\nEstimated recovered: ${fmtSOL(totalSol)}\\nDonation: ${fmtSOL(donationSol)}\\nYou receive: ${fmtSOL(userReceive)}\\nTransaction requires your wallet signature.`)) return;
+      if(!confirm(`Close ${accountsToClose.length} account(s)?\\nEstimated recovered: ${fmtSOL(totalSol)}\\nDonation: ${fmtSOL(donationSol)}\\nYou receive: ${fmtSOL(userReceive)}\\nTransaction requires your wallet signature.`)) return;
+
+      // build transaction
       const tx = new Transaction();
-      for(const idx of zeroIdx){
-        const a = tokenAccounts[idx];
-        const tokenAccountPub = new PublicKey(a.pubkey);
-        const closeIx = createCloseAccountInstruction(tokenAccountPub, publicKey, publicKey, []);
+      for(const a of accountsToClose){
+        const accPub = new PublicKey(a.pubkey);
+        const closeIx = createCloseAccountInstruction(accPub, publicKey, publicKey, []);
         tx.add(closeIx);
       }
-      if(donationPub && donationLamports > 0){
-        tx.add(SystemProgram.transfer({ fromPubkey: publicKey, toPubkey: donationPub, lamports: donationLamports }));
+      if(donationPubKey && donationLamports > 0){
+        tx.add(SystemProgram.transfer({ fromPubkey: publicKey, toPubkey: donationPubKey, lamports: donationLamports }));
       }
       tx.feePayer = publicKey;
       tx.recentBlockhash = (await conn.getRecentBlockhash()).blockhash;
-      try{
-        dbg('Requesting signature/send for refund transaction');
-        let sig;
+
+      try {
+        dbg('Requesting wallet to sign/send refund tx');
+        let signature;
         if(provider.signAndSendTransaction){
           const res = await provider.signAndSendTransaction(tx);
-          sig = res.signature;
+          signature = res.signature;
         } else {
           const signed = await provider.signTransaction(tx);
           const raw = signed.serialize();
-          sig = await conn.sendRawTransaction(raw);
+          signature = await conn.sendRawTransaction(raw);
         }
-        dbg('Refund tx sent', sig);
-        appendTxLog(sig, totalLamports, donationLamports);
+        dbg('Transaction sent', signature);
+        appendTxLog(signature, totalLamports, donationLamports);
+        // small wait then refresh inventory
         await new Promise(r=>setTimeout(r,1200));
-        await refreshInventory();
-        alert('Refund transaction sent: ' + sig);
-      }catch(e){
-        dbg('Refund tx failed', e && (e.message||e));
-        alert('Transaction failed or rejected. See debug console for details.');
+        await scanBtn.onclick();
+        alert('Refund transaction sent: ' + signature);
+      } catch(e){
+        dbg('Transaction failed', e && (e.message||e));
+        alert('Transaction failed or was rejected by the wallet. See debug console.');
       }
     };
 
     function appendTxLog(sig, recoveredLamports, donationLamports){
+      const tr = document.createElement('tr');
       const recoveredSol = lamportsToSol(Number(recoveredLamports));
       const donationSol = lamportsToSol(Number(donationLamports));
-      const tr = document.createElement('tr');
       const time = new Date().toLocaleString();
       tr.innerHTML = `<td><a class="link" target="_blank" rel="noreferrer" href="https://explorer.solana.com/tx/${sig}?cluster=mainnet-beta">${short(sig)}</a></td><td>${fmtSOL(recoveredSol)}</td><td>${fmtSOL(donationSol)}</td><td class="small">${time}</td>`;
       if(txBody.children.length === 1 && txBody.children[0].children[0].colSpan === 4) txBody.innerHTML = '';
       txBody.prepend(tr);
     }
 
-    // Init: try to auto-restore trusted connection
+    // Init: try restore trusted connection and enable connect button
     (async function init(){
-      dbg('Init start: waiting for provider injection');
+      dbg('Init: waiting for provider injection');
       await new Promise(r=>setTimeout(r,700));
-      rpcInput.value = RPC_URL;
-      donationInput.value = DONATION_PUBKEY;
-      donationPct.value = String(Math.round(DONATION_RATE*100));
-      const p = await ensureProvider();
-      if(p){ provider = p; try{ const resp = await provider.connect({ onlyIfTrusted:true }); if(resp && resp.publicKey){ publicKey = resp.publicKey; onConnected(); dbg('Trusted connection restored', publicKey.toString()); } }catch(e){ dbg('Trusted restore not available', e && (e.message||e)); } }
+      const inj = await ensureProvider();
+      if(inj){
+        provider = inj;
+        try{
+          const resp = await provider.connect({ onlyIfTrusted:true });
+          if(resp && resp.publicKey){ publicKey = resp.publicKey; onConnected(); dbg('Trusted connection restored', publicKey.toString()); }
+        }catch(e){ dbg('Trusted restore not available', e && (e.message||e)); }
+      } else dbg('Provider not detected at init');
       connectBtn.disabled = false;
+      // allow rpcInput changes after init
+      rpcInput.onchange = ()=> { RPC_URL = rpcInput.value.trim() || RPC_URL; conn = new Connection(RPC_URL,'confirmed'); dbg('RPC changed to', RPC_URL); };
     })();
 
-    // Bind connect (separate to allow rebind in some code paths)
+    // Wire connect button
     connectBtn.onclick = connectWallet;
-    async function connectWallet(){
-      connectBtn.disabled = true; connectBtn.textContent = 'Connecting...';
-      const p = await ensureProvider();
-      if(!p){ dbg('No provider; deep link'); connectBtn.textContent='Open Wallet'; openDeepLink(); connectBtn.disabled=false; return; }
-      provider = p;
-      try{ const resp = await provider.connect({ onlyIfTrusted:true }); if(resp && resp.publicKey){ publicKey = resp.publicKey; onConnected(); return; } }catch(e){ dbg('trusted connect failed', e && (e.message||e)); }
-      try{ const resp2 = await provider.connect(); publicKey = resp2.publicKey || provider.publicKey; if(publicKey){ onConnected(); return; } }catch(e){ dbg('explicit connect failed', e && (e.message||e)); connectBtn.disabled=false; connectBtn.textContent='Connect Wallet'; }
-    }
   })();
   </script>
 </body>
