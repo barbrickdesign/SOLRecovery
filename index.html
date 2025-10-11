@@ -1,194 +1,339 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Phantom + RPC Diagnostic</title>
-<style>
-  body{font-family:system-ui,-apple-system,Roboto,Arial;background:#071026;color:#e6eef8;padding:18px}
-  button{padding:12px 16px;border-radius:10px;background:#60a5fa;border:0;color:#022;font-weight:700}
-  pre{background:#021026;padding:12px;border-radius:8px;white-space:pre-wrap;max-height:60vh;overflow:auto}
-  .muted{color:#9ab0c8}
-</style>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>SOL Recovery — Phantom Mobile Optimized</title>
+  <style>
+    :root{--bg:#041026;--card:#071427;--muted:#9ab0c8;--accent:#60a5fa;--danger:#fb7185}
+    html,body{height:100%;margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial;background:linear-gradient(180deg,#031226 0,#071429 100%);color:#e6eef8}
+    .wrap{max-width:980px;margin:14px auto;padding:14px}
+    .card{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border-radius:12px;padding:12px;margin-bottom:12px;border:1px solid rgba(255,255,255,0.03)}
+    h1{margin:0;font-size:18px}
+    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    button{padding:10px 12px;border-radius:10px;border:0;background:linear-gradient(90deg,var(--accent),#38bdf8);color:#022;font-weight:700}
+    button.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted)}
+    .muted{color:var(--muted);font-size:13px}
+    .small{font-size:12px;color:var(--muted)}
+    input[type=text]{width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit}
+    pre{background:#021026;padding:10px;border-radius:8px;color:#cfe9ff;max-height:320px;overflow:auto;white-space:pre-wrap}
+    a.link{color:var(--accent);text-decoration:none;word-break:break-all}
+    .notice{padding:10px;border-radius:8px;background:rgba(96,165,250,0.04);border:1px solid rgba(96,165,250,0.06);color:var(--muted)}
+    .error{color:var(--danger);font-weight:700}
+    @media (max-width:640px){ .row{flex-direction:column;align-items:flex-start} button{width:100%} }
+  </style>
 </head>
 <body>
-  <h2>Automated Phantom + RPC Diagnostic</h2>
-  <div class="muted">Opens provider if possible, queries RPC, and tests signing APIs (0‑lamport). Paste full report if anything fails.</div>
-  <div style="margin-top:12px">
-    <label>RPC to test: <input id="rpc" value="https://api.mainnet-beta.solana.com" style="width:56%"/></label>
+  <div class="wrap">
+    <div class="card">
+      <h1>SOL Recovery — Phantom Mobile Optimized</h1>
+      <div class="muted">Open this page inside Phantom's in-app browser, unlock your wallet, then tap Connect. The page will show live status and a debug log.</div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <div style="flex:1">
+          <button id="connectBtn">Connect Wallet</button>
+        </div>
+        <div style="min-width:180px">
+          <div class="small muted">Status</div>
+          <div id="statusText" style="font-weight:700">Not connected</div>
+        </div>
+      </div>
+
+      <div style="margin-top:12px" class="notice" id="instructions">
+        Steps: 1) Open Phantom app → Browser → paste this page URL. 2) Unlock Phantom. 3) Tap Connect below and approve the prompt. If you don’t see a prompt, tap "Open Phantom" to reload here in-app.
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="gap:12px">
+        <div style="flex:1">
+          <div class="small muted">Connected wallet</div>
+          <div id="walletAddr" style="font-weight:700">—</div>
+        </div>
+        <div style="width:140px">
+          <div class="small muted">SOL Balance</div>
+          <div id="solBalance">—</div>
+        </div>
+        <div style="width:120px">
+          <div class="small muted">Token Accounts (parsed)</div>
+          <div id="tokenCount">—</div>
+        </div>
+      </div>
+
+      <div style="margin-top:10px" class="row">
+        <button id="scanBtn" class="ghost" disabled>Scan Token Accounts</button>
+        <button id="debugBtn" class="ghost">Run Diagnostics</button>
+        <div style="margin-left:auto" class="small muted">Mobile: Phantom in-app browser recommended</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <strong>Eligible Zero-balance Accounts</strong>
+      <div class="small muted">(Only token accounts where tokenAmount.amount == "0" and owner === connected wallet)</div>
+      <table>
+        <thead><tr><th style="width:36px"></th><th>Token Account</th><th>Mint</th><th>Lamports</th><th class="center">Action</th></tr></thead>
+        <tbody id="accountsBody"><tr><td colspan="5" class="small muted center">Connect and Scan</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <strong>Debug Console</strong>
+      <pre id="debug">Ready.</pre>
+      <div style="margin-top:8px">
+        <button id="openPhantomBtn" class="ghost" style="display:none">Open Phantom (reload here)</button>
+      </div>
+    </div>
   </div>
-  <div style="margin-top:12px">
-    <button id="run">RUN DIAGNOSTICS</button>
-  </div>
-  <h3 style="margin-top:12px">Report</h3>
-  <pre id="out">Ready. Click RUN DIAGNOSTICS.</pre>
 
-<script src="https://unpkg.com/@solana/web3.js@1.76.0/lib/index.iife.min.js"></script>
-<script>
-(async function(){
-  const out = document.getElementById('out');
-  const run = document.getElementById('run');
-  const rpcInput = document.getElementById('rpc');
+  <script src="https://unpkg.com/@solana/web3.js@1.76.0/lib/index.iife.min.js"></script>
+  <script src="https://unpkg.com/@solana/spl-token@0.3.5/lib/index.iife.js"></script>
 
-  function log(...args){
-    const ts = new Date().toISOString();
-    out.textContent += `\n[${ts}] ` + args.map(a => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ');
-    console.log(...args);
-  }
+  <script>
+  (function(){
+    const debugEl = document.getElementById('debug');
+    const connectBtn = document.getElementById('connectBtn');
+    const statusText = document.getElementById('statusText');
+    const walletAddrEl = document.getElementById('walletAddr');
+    const solBalanceEl = document.getElementById('solBalance');
+    const tokenCountEl = document.getElementById('tokenCount');
+    const scanBtn = document.getElementById('scanBtn');
+    const accountsBody = document.getElementById('accountsBody');
+    const openPhantomBtn = document.getElementById('openPhantomBtn');
+    const debugBtn = document.getElementById('debugBtn');
 
-  function clear(){ out.textContent = ''; }
+    let provider = null;
+    let publicKey = null;
+    let conn = new solanaWeb3.Connection('https://api.mainnet-beta.solana.com','confirmed');
 
-  async function waitForProvider(timeout=5000){
-    if(window.solana && window.solana.isPhantom) return window.solana;
-    return new Promise(resolve=>{
-      let done=false;
-      const t = setInterval(()=>{
-        if(window.solana && window.solana.isPhantom){ clearInterval(t); done=true; resolve(window.solana); }
-      },200);
-      setTimeout(()=>{ if(!done){ clearInterval(t); resolve(null); } }, timeout);
-    });
-  }
+    function log(...args){ const ts='['+new Date().toISOString()+'] '; debugEl.textContent = ts + args.map(a => (typeof a==='object'? JSON.stringify(a): String(a))).join(' ') + "\\n" + debugEl.textContent; console.log(...args); }
+    function short(s){ s=String(s); return s.slice(0,4) + '…' + s.slice(-4); }
+    function fmtSOL(n){ return Number(n).toFixed(6) + ' SOL'; }
+    function showStatus(s, isError){ statusText.textContent = s; if(isError) statusText.classList.add('error'); else statusText.classList.remove('error'); }
 
-  async function runDiagnostics(){
-    clear();
-    log('Starting diagnostics');
-    const RPC = rpcInput.value.trim() || 'https://api.mainnet-beta.solana.com';
-    log('RPC used', RPC);
-
-    // solanaWeb3 presence
-    log('solanaWeb3 present?', typeof solanaWeb3 !== 'undefined');
-    log('web3 version object keys', Object.keys(solanaWeb3 || {}));
-
-    // provider detection
-    const provider = await waitForProvider(6000);
-    log('window.solana present?', !!window.solana);
-    log('isPhantom?', provider ? !!provider.isPhantom : false);
-    if(!provider){
-      log('PROVIDER MISSING: Phantom not injected. If on mobile, open this page inside Phantom in-app browser or use deep-link.');
-    } else {
-      log('provider object keys', Object.keys(provider));
+    // Wait for provider injection up to timeout (longer for mobile)
+    function waitForProvider(timeout = 6000){
+      return new Promise(resolve => {
+        if(window.solana && window.solana.isPhantom) return resolve(window.solana);
+        let resolved = false;
+        const t = setInterval(()=> {
+          if(window.solana && window.solana.isPhantom){
+            clearInterval(t); resolved = true; log('provider injected (interval)'); resolve(window.solana);
+          }
+        }, 200);
+        setTimeout(()=> { if(!resolved){ clearInterval(t); resolve(null); } }, timeout);
+      });
     }
 
-    // Try trusted connect
-    if(provider){
+    async function ensureProvider(){
+      if(provider && window.solana && window.solana.isPhantom){ provider = window.solana; return provider; }
+      const inj = await waitForProvider(6000);
+      if(inj){ provider = inj; return provider; }
+      return null;
+    }
+
+    async function connectFlow(){
+      connectBtn.disabled = true; connectBtn.textContent = 'Connecting...'; showStatus('Connecting...');
+      log('connect: ensuring provider');
+      const p = await ensureProvider();
+      if(!p){
+        log('No injected provider detected. Open Phantom browser and load this page, then try Connect again.');
+        showStatus('Provider not detected', true);
+        connectBtn.disabled = false; connectBtn.textContent = 'Connect Wallet';
+        openPhantomBtn.style.display = 'inline-block';
+        return;
+      }
+      provider = p;
+      // listen for provider events
+      provider.on && provider.on('connect', pk => {
+        log('provider event: connect', pk?.toString?.() || pk);
+      });
+      provider.on && provider.on('disconnect', () => {
+        log('provider event: disconnect');
+        publicKey = null;
+        walletAddrEl.textContent = '—';
+        solBalanceEl.textContent = '—';
+        tokenCountEl.textContent = '—';
+        scanBtn.disabled = true;
+        connectBtn.disabled = false;
+        connectBtn.textContent = 'Connect Wallet';
+        showStatus('Disconnected', true);
+      });
+
+      // Try trusted restore first
       try {
+        log('Trying trusted connect');
         const resp = await provider.connect({ onlyIfTrusted: true });
-        log('trusted connect response', resp && resp.publicKey ? resp.publicKey.toString() : resp);
+        if(resp && resp.publicKey){
+          publicKey = resp.publicKey;
+          finalizeConnected();
+          return;
+        }
       } catch(e){
-        log('trusted connect error', e && e.message ? e.message : e);
+        log('Trusted connect failed (not trusted or rejected)', e && e.message || e);
       }
-      // explicit connect (user must confirm if prompted)
+
+      // Explicit connect (must be user gesture — we're inside click handler)
       try {
-        log('Attempting explicit connect (wallet may prompt) - please approve in wallet if asked');
-        const resp2 = await provider.connect();
-        log('explicit connect response', resp2 && resp2.publicKey ? resp2.publicKey.toString() : resp2);
-      } catch(e){
-        log('explicit connect error', e && e.message ? e.message : e);
+        log('Requesting explicit connect — approve in Phantom if prompted');
+        const resp = await provider.connect();
+        publicKey = resp.publicKey || provider.publicKey;
+        if(!publicKey && provider.publicKey) publicKey = provider.publicKey;
+        if(publicKey){
+          finalizeConnected();
+          return;
+        } else {
+          throw new Error('No publicKey returned');
+        }
+      } catch(err){
+        log('Explicit connect failed or user rejected', err && (err.message||err));
+        connectBtn.disabled = false; connectBtn.textContent = 'Connect Wallet';
+        showStatus('Connection not approved', true);
+        // show "Open Phantom" if injection present but connect rejected — helpful shortcut
+        openPhantomBtn.style.display = 'inline-block';
       }
     }
 
-    // Test RPC queries
-    try {
-      const conn = new solanaWeb3.Connection(RPC,'confirmed');
-      log('Connection created');
-      if(provider && provider.publicKey) log('Connected publicKey (provider.publicKey)', provider.publicKey.toString());
-      // test getBalance
-      const pk = (provider && provider.publicKey) ? new solanaWeb3.PublicKey(provider.publicKey.toString()) : null;
-      if(pk){
+    function finalizeConnected(){
+      walletAddrEl.textContent = publicKey.toString();
+      connectBtn.textContent = 'Connected';
+      connectBtn.disabled = true;
+      showStatus('Connected');
+      scanBtn.disabled = false;
+      log('Connected as', publicKey.toString());
+      refreshBalance();
+    }
+
+    async function refreshBalance(){
+      if(!publicKey) return;
+      try {
+        const lam = await conn.getBalance(publicKey,'confirmed');
+        solBalanceEl.textContent = fmtSOL(lam / solanaWeb3.LAMPORTS_PER_SOL);
+      } catch(e){
+        log('getBalance failed', e && e.message);
+      }
+    }
+
+    // Scan token accounts for zero-balance eligible accounts
+    scanBtn.onclick = async function scan(){
+      if(!publicKey){ alert('Connect first'); return; }
+      scanBtn.disabled = true;
+      accountsBody.innerHTML = '<tr><td colspan="5" class="small muted center">Scanning...</td></tr>';
+      log('Scanning parsed token accounts for', publicKey.toString());
+      try {
+        const parsed = await conn.getParsedTokenAccountsByOwner(publicKey, { programId: splToken.TOKEN_PROGRAM_ID });
+        const list = parsed.value || [];
+        log('parsed token accounts count', list.length);
+        const eligible = [];
+        // batch fetching lamports in small chunks
+        const pubkeys = list.map(v => new solanaWeb3.PublicKey(v.pubkey));
+        const unique = [...new Map(pubkeys.map(p => [p.toBase58(), p])).values()];
+        const batchSize = 100;
+        const accountInfos = {};
+        for(let i=0;i<unique.length;i+=batchSize){
+          const slice = unique.slice(i,i+batchSize);
+          const infos = await conn.getMultipleAccountsInfo(slice);
+          for(let j=0;j<slice.length;j++) accountInfos[slice[j].toBase58()] = infos[j];
+        }
+        for(const v of list){
+          const info = v.account.data.parsed?.info;
+          if(!info) continue;
+          const amountRaw = info.tokenAmount?.amount || "0";
+          if(BigInt(amountRaw) !== 0n) continue; // skip non-zero
+          if(info.owner !== publicKey.toString()) continue; // skip not owned
+          const onchain = accountInfos[v.pubkey];
+          const lamports = onchain ? onchain.lamports : 0;
+          eligible.push({ pubkey: v.pubkey, mint: info.mint, lamports, owner: info.owner });
+        }
+        eligible.sort((a,b)=>b.lamports - a.lamports);
+        renderEligible(eligible);
+        log('Scan complete, eligible count', eligible.length);
+      } catch(e){
+        log('Scan failed', e && (e.message||e));
+        accountsBody.innerHTML = '<tr><td colspan="5" class="small muted center">Scan failed; see debug</td></tr>';
+      } finally {
+        scanBtn.disabled = false;
+      }
+    };
+
+    function renderEligible(list){
+      if(!list.length){
+        accountsBody.innerHTML = '<tr><td colspan="5" class="small muted center">No zero-balance token accounts found.</td></tr>';
+        tokenCountEl.textContent = '0';
+        return;
+      }
+      tokenCountEl.textContent = String(list.length);
+      const rows = list.map((a, idx) => `
+        <tr data-idx="${idx}">
+          <td><input type="checkbox" class="sel" data-idx="${idx}"/></td>
+          <td title="${a.pubkey}">${short(a.pubkey)}</td>
+          <td title="${a.mint}">${short(a.mint)}</td>
+          <td>${a.lamports}</td>
+          <td class="center"><button class="detail" data-idx="${idx}" style="padding:6px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:var(--muted)">Details</button></td>
+        </tr>`).join('');
+      accountsBody.innerHTML = rows;
+      document.querySelectorAll('.detail').forEach(b => b.onclick = ()=>{
+        const i = Number(b.dataset.idx);
+        const a = list[i];
+        alert('Token account: ' + a.pubkey + '\\nMint: ' + a.mint + '\\nLamports: ' + a.lamports + '\\nOwner: ' + a.owner);
+      });
+    }
+
+    // Open Phantom helper (show button when connect fails)
+    openPhantomBtn.onclick = function(){
+      // Opens Phantom; when user returns the provider will be injected
+      const url = `https://phantom.app/ul/v1/connect?app_url=${encodeURIComponent(location.origin)}&redirect_link=${encodeURIComponent(location.href)}`;
+      window.open(url, '_blank');
+    };
+
+    // Small diagnostic to help when connect seems blocked
+    debugBtn.onclick = async function runDiag(){
+      debugEl.textContent = '';
+      log('Running quick diagnostics');
+      log('window.solana present?', !!window.solana, 'isPhantom?', window.solana?.isPhantom);
+      if(window.solana) log('provider keys', Object.keys(window.solana));
+      try {
+        const p = await ensureProvider();
+        log('ensureProvider result', !!p);
+      } catch(e){ log('ensureProvider error', e && e.message); }
+      log('If connect is rejected, make sure Phantom is unlocked and approve the prompt. If no prompt appears, tap "Open Phantom" to reload this page in Phantom browser.');
+    };
+
+    // init: wait for provider injection so that UI shows immediate status if provider is present
+    (async function init(){
+      log('Init: waiting for provider injection (6s)');
+      const inj = await waitForProvider(6000);
+      if(inj){
+        provider = inj;
+        log('Provider detected on init');
+        // show quick hint if already trusted
         try {
-          const bal = await conn.getBalance(pk);
-          log('getBalance OK, lamports', bal, 'SOL', (bal/solanaWeb3.LAMPORTS_PER_SOL));
+          const resp = await provider.connect({ onlyIfTrusted:true });
+          if(resp && resp.publicKey){
+            publicKey = resp.publicKey;
+            finalizeConnected();
+          } else {
+            log('Not trusted yet; tap Connect to request approval.');
+            showStatus('Not connected');
+            connectBtn.disabled = false;
+          }
         } catch(e){
-          log('getBalance failed', e && e.message ? e.message : e);
+          log('Trusted restore not available', e && e.message);
+          showStatus('Not connected');
+          connectBtn.disabled = false;
         }
       } else {
-        log('No public key available for getBalance test');
+        log('Provider not injected at init. Ensure you opened this page inside Phantom browser.');
+        showStatus('Provider not detected', true);
+        connectBtn.disabled = false;
+        openPhantomBtn.style.display = 'inline-block';
       }
-      // test getParsedTokenAccountsByOwner (only if pk)
-      if(pk){
-        try {
-          const parsed = await conn.getParsedTokenAccountsByOwner(pk, { programId: solanaWeb3.TokenInstructions ? solanaWeb3.TokenInstructions.TOKEN_PROGRAM_ID : solanaWeb3.TOKEN_PROGRAM_ID });
-          log('getParsedTokenAccountsByOwner OK count', parsed?.value?.length ?? 0);
-          if(parsed?.value?.length) log('sample token account', parsed.value[0].pubkey);
-        } catch(e){
-          log('getParsedTokenAccountsByOwner failed', e && e.message ? e.message : e);
-        }
-      }
+    })();
 
-      // Test batch getMultipleAccountsInfo using a small slice if token accounts present
-      if(pk){
-        try {
-          const parsed = await conn.getParsedTokenAccountsByOwner(pk, { programId: solanaWeb3.TOKEN_PROGRAM_ID });
-          const list = parsed.value || [];
-          log('token accounts fetched', list.length);
-          if(list.length){
-            const sample = list.slice(0,3).map(v => new solanaWeb3.PublicKey(v.pubkey));
-            try {
-              const infos = await conn.getMultipleAccountsInfo(sample);
-              log('getMultipleAccountsInfo OK sample length', infos.length);
-            } catch(e){
-              log('getMultipleAccountsInfo failed', e && e.message ? e.message : e);
-            }
-          }
-        } catch(e){
-          log('token accounts fetch failed', e && e.message ? e.message : e);
-        }
-      }
-    } catch(e){
-      log('RPC tests overall failed', e && e.message ? e.message : e);
-    }
-
-    // Test signTransaction and signAndSendTransaction with 0-lamport tx (will prompt wallet)
-    if(provider && provider.publicKey){
-      const conn = new solanaWeb3.Connection(RPC,'confirmed');
-      const from = new solanaWeb3.PublicKey(provider.publicKey.toString());
-      try {
-        const tx = new solanaWeb3.Transaction().add(
-          solanaWeb3.SystemProgram.transfer({ fromPubkey: from, toPubkey: from, lamports: 0 })
-        );
-        tx.recentBlockhash = (await conn.getRecentBlockhash()).blockhash;
-        tx.feePayer = from;
-        log('Requesting provider.signTransaction (may prompt) — DO NOT APPROVE UNLESS YOU INTEND TO SIGN. You can reject to test provider behavior.');
-        try {
-          const signed = await provider.signTransaction(tx);
-          log('signTransaction returned:', !!signed && typeof signed.serialize === 'function');
-        } catch(e){
-          log('signTransaction failed or rejected', e && e.message ? e.message : e);
-        }
-      } catch(e){
-        log('signTransaction test build failed', e && e.message ? e.message : e);
-      }
-
-      // signAndSendTransaction (if supported)
-      try {
-        if(provider.signAndSendTransaction){
-          const tx2 = new solanaWeb3.Transaction().add(
-            solanaWeb3.SystemProgram.transfer({ fromPubkey: from, toPubkey: from, lamports: 0 })
-          );
-          tx2.recentBlockhash = (await conn.getRecentBlockhash()).blockhash;
-          tx2.feePayer = from;
-          log('Requesting provider.signAndSendTransaction (may prompt) — will not transfer funds (0 lamports). Approve to test, or cancel.');
-          try {
-            const res = await provider.signAndSendTransaction(tx2);
-            log('signAndSendTransaction returned signature:', res && res.signature ? res.signature : res);
-          } catch(e){
-            log('signAndSendTransaction failed/rejected', e && e.message ? e.message : e);
-          }
-        } else {
-          log('provider.signAndSendTransaction not available on this provider');
-        }
-      } catch(e){
-        log('signAndSendTransaction test build failed', e && e.message ? e.message : e);
-      }
-    } else {
-      log('Provider or provider.publicKey missing; skipping sign tests');
-    }
-
-    log('Diagnostics complete');
-  }
-
-  run.onclick = () => { runDiagnostics().catch(e => { out.textContent += '\\nERROR: ' + (e && e.message ? e.message : e); console.error(e); }); };
-})();
-</script>
+    // connect click wiring
+    connectBtn.addEventListener('click', connectFlow);
+  })();
+  </script>
 </body>
 </html>
