@@ -1,11 +1,18 @@
 <!DOCTYPE html>
 <html>
+<html lang="en">
 <head>
   <title>Ritual Recovery Portal</title>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <script src="https://cdn.jsdelivr.net/npm/@solana/web3.js@latest/lib/index.iife.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@solana/spl-token@latest/lib/index.iife.min.js"></script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ritual Recovery Portal — Refund Your SOL Rent</title>
+  <meta name="description" content="Close empty SPL token accounts and reclaim SOL rent. Optional 5% donation with referral share. User pays gas." />
+  <link rel="preconnect" href="https://unpkg.com">
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
   <style>
     body {
       font-family: 'Orbitron', sans-serif;
@@ -46,7 +53,55 @@
     button:hover {
       background: #66fcf1;
       color: black;
+    :root {
+      --bg: #0b0c10;
+      --panel: #12161e;
+      --accent: #66fcf1;
+      --accent2: #45a29e;
+      --text: #c5c6c7;
+      --muted: #8ea2c6;
+      --good: #4ade80;
+      --warn: #fbbf24;
+      --bad: #f87171;
     }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; background: var(--bg); color: var(--text); font-family: Orbitron, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif; }
+    a { color: var(--accent); text-decoration: none; }
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 24px; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .glyph { width: 42px; height: 42px; border-radius: 9px; background: linear-gradient(135deg, var(--accent), var(--accent2)); box-shadow: 0 0 24px rgba(102,252,241,0.25); animation: pulse 2s infinite; }
+    @keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }
+    h1 { font-size: 20px; margin: 0; }
+    .panel { background: var(--panel); border: 1px solid #1c2330; border-radius: 12px; padding: 16px; }
+    .grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+    @media (min-width: 900px) { .grid { grid-template-columns: 1.1fr 0.9fr; } }
+    .btn { background: #1a2130; color: var(--text); border: 1px solid #2a3346; padding: 10px 14px; border-radius: 10px; cursor: pointer; transition: 0.2s ease; font-weight: 600; }
+    .btn:hover { border-color: var(--accent); box-shadow: 0 0 12px rgba(102,252,241,0.20); }
+    .btn.primary { background: linear-gradient(135deg, #1a2232, #202a40); border-color: #33425f; }
+    .btn.good { border-color: #2f7a48; color: var(--good); }
+    .btn.bad { border-color: #7a2f2f; color: var(--bad); }
+    .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .stat { background: #0f141d; border: 1px solid #1e2a3f; border-radius: 10px; padding: 10px 12px; min-width: 140px; }
+    .stat .label { font-size: 12px; color: var(--muted); }
+    .stat .val { font-size: 18px; font-weight: 700; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace; }
+    .muted { color: var(--muted); }
+    .list { display: grid; gap: 10px; }
+    .item { display: grid; grid-template-columns: 1.2fr 0.8fr 0.8fr 1.1fr 1fr; gap: 8px; align-items: center; }
+    .item > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .item.head { color: var(--muted); font-weight: 600; }
+    .hr { height: 1px; background: #1e2a3f; border: 0; margin: 12px 0; }
+    .badge { display: inline-block; padding: 6px 8px; border-radius: 8px; border: 1px solid #2a3346; background: #0f141d; font-size: 12px; }
+    .small { font-size: 12px; }
+    .right { margin-left: auto; }
+    .input { background: #0f141d; border: 1px solid #1e2a3f; color: var(--text); border-radius: 8px; padding: 8px 10px; width: 100%; }
+    .switch { display: inline-flex; align-items: center; gap: 8px; }
+    footer { margin-top: 24px; padding-top: 16px; border-top: 1px solid #1e2a3f; color: var(--muted); }
+    .link-row { display: flex; gap: 12px; flex-wrap: wrap; }
+    .warn { color: var(--warn); }
+    .success { color: var(--good); }
+    .error { color: var(--bad); }
   </style>
 </head>
 <body>
@@ -54,6 +109,147 @@
   <button onclick="startRecovery()">Recover My SOL</button>
   <div id="coinList" class="coin-list"></div>
   <button onclick="sendReferral()">Refer Friends</button>
+  <div class="wrap">
+    <header>
+      <div class="brand">
+        <div class="glyph"></div>
+        <div>
+          <h1>Ritual Recovery Portal</h1>
+          <div class="muted small">Close empty SPL token accounts and reclaim SOL rent.</div>
+        </div>
+      </div>
+      <div class="row">
+        <button id="connectBtn" class="btn primary">Select Wallet</button>
+        <button id="resetBtn" class="btn">Reset Connection</button>
+      </div>
+    </header>
+
+    <div class="grid">
+      <section class="panel">
+        <h2 style="margin:0 0 8px 0;">How it works</h2>
+        <div class="small muted">
+          The Solana blockchain charges rent for unused SPL token accounts. Closing empty accounts refunds rent back to your wallet. Each empty token account typically releases 0.00204 SOL when closed.
+        </div>
+
+        <div class="hr"></div>
+
+        <div class="row">
+          <div class="stat">
+            <div class="label">Wallet</div>
+            <div id="walletLabel" class="val mono">—</div>
+          </div>
+          <div class="stat">
+            <div class="label">Empty accounts found</div>
+            <div id="emptyCount" class="val">0</div>
+          </div>
+          <div class="stat">
+            <div class="label">Estimated refund</div>
+            <div id="refundEstimate" class="val">0.00000 SOL</div>
+          </div>
+          <div class="stat">
+            <div class="label">Donation (5%)</div>
+            <div id="donationEstimate" class="val">0.00000 SOL</div>
+          </div>
+        </div>
+
+        <div class="hr"></div>
+
+        <div class="row">
+          <label class="switch">
+            <input id="donationToggle" type="checkbox" checked />
+            <span class="small">Include 5% donation. Referrer (if present) receives a share.</span>
+          </label>
+        </div>
+
+        <div class="row" style="margin-top:8px;">
+          <div style="flex:1;">
+            <label class="small muted">Referral address (auto-filled from ?ref= or ?summoner=)</label>
+            <input id="refAddress" class="input mono" placeholder="Referrer wallet address (optional)" />
+          </div>
+          <button id="scanBtn" class="btn right">Scan empty accounts</button>
+        </div>
+
+        <div id="status" class="small muted" style="margin-top:10px;"></div>
+
+        <div class="hr"></div>
+
+        <div class="row">
+          <button id="refundBtn" class="btn good">Close accounts & refund rent</button>
+          <button id="exportBtn" class="btn">Export session report</button>
+        </div>
+
+        <div id="sessionReport" class="small muted" style="margin-top:10px;"></div>
+      </section>
+
+      <section class="panel">
+        <h2 style="margin:0 0 8px 0;">Session stats and feed</h2>
+        <div class="small muted">
+          Local session stats are shown below. For global counters and a shared feed like the reference site, plug in a backend later.
+        </div>
+
+        <div class="hr"></div>
+
+        <div class="row">
+          <div class="stat">
+            <div class="label">Session users</div>
+            <div id="statUsers" class="val">—</div>
+          </div>
+          <div class="stat">
+            <div class="label">Accounts closed</div>
+            <div id="statClosed" class="val">—</div>
+          </div>
+          <div class="stat">
+            <div class="label">SOL refunded</div>
+            <div id="statRefunded" class="val">—</div>
+          </div>
+        </div>
+
+        <div class="hr"></div>
+
+        <div class="list small">
+          <div class="item head">
+            <span>Wallet</span><span>Accounts</span><span>SOL</span><span>Tx Signature</span><span>Date</span>
+          </div>
+          <div id="feed"></div>
+        </div>
+
+        <div class="row" style="margin-top:12px;">
+          <button id="loadMoreBtn" class="btn">Load more</button>
+          <span class="small muted">Session-only feed. Add a backend to make it global.</span>
+        </div>
+
+        <div class="hr"></div>
+
+        <div class="small muted">
+          GitHub Pages is already configured to publish from main at the root for your project site URL.
+        </div>
+      </section>
+    </div>
+
+    <section class="panel" style="margin-top:16px;">
+      <h2 style="margin:0 0 8px 0;">FAQ</h2>
+      <div class="small">
+        <p><strong>What is account rent?</strong> SPL token accounts require rent to remain allocated. If token balance is zero, you can close the account and reclaim rent to your wallet.</p>
+        <p><strong>Is it safe?</strong> You only close accounts you own and that are empty. Refunds come from deallocation of the account.</p>
+        <p><strong>Fees and donations?</strong> Optional 5% donation. If a referrer is present via <span class="mono">?ref=</span> or <span class="mono">?summoner=</span>, a share goes to them. User pays gas for their transactions.</p>
+      </div>
+    </section>
+
+    <footer>
+      <div class="row">
+        <div class="link-row">
+          <span class="badge">SOLANA</span>
+          <span class="badge">VIBE STATION</span>
+          <span class="badge">Mobula</span>
+        </div>
+        <span class="right small muted">© Ritual Recovery 2025</span>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Solana web3.js and SPL Token via CDN (iife builds, safe for static) -->
+  <script src="https://cdn.jsdelivr.net/npm/@solana/web3.js@latest/lib/index.iife.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@solana/spl-token@latest/lib/index.iife.min.js"></script>
 
   <script>
     const connection = new solanaWeb3.Connection("https://api.mainnet-beta.solana.com");
@@ -85,10 +281,165 @@
             wallet,
             wallet
           )
+    // Network and connection
+    const endpoint = 'https://api.mainnet-beta.solana.com';
+    const connection = new solanaWeb3.Connection(endpoint, 'confirmed');
+
+    // Constants (aligned to your original script)
+    const RENT_PER_EMPTY_ACCOUNT_SOL = 0.00204; // display estimate only
+    const DONATION_PCT = 0.05; // updated to 5%
+    const REFERRAL_SPLIT_PCT_OF_DONATION = 0.20; // 20% of donation goes to referrer if present
+    // FEE wallet from your original page source
+    const FEE_WALLET = new solanaWeb3.PublicKey('5hSWosj58ki4A6hSfQrvteQU5QvyCWmhHn4AuqgaQzqr');
+
+    // Elements
+    const connectBtn = document.getElementById('connectBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const scanBtn = document.getElementById('scanBtn');
+    const refundBtn = document.getElementById('refundBtn');
+    const exportBtn = document.getElementById('exportBtn');
+    const loadMoreBtn = document.getElementById('loadMoreBtn');
+
+    const walletLabel = document.getElementById('walletLabel');
+    const emptyCountEl = document.getElementById('emptyCount');
+    const refundEstimateEl = document.getElementById('refundEstimate');
+    const donationEstimateEl = document.getElementById('donationEstimate');
+    const statusEl = document.getElementById('status');
+    const sessionReportEl = document.getElementById('sessionReport');
+    const refInput = document.getElementById('refAddress');
+    const donationToggle = document.getElementById('donationToggle');
+
+    const statUsersEl = document.getElementById('statUsers');
+    const statClosedEl = document.getElementById('statClosed');
+    const statRefundedEl = document.getElementById('statRefunded');
+    const feedEl = document.getElementById('feed');
+
+    // State
+    let wallet = null;
+    let emptyTokenAccounts = [];
+    let sessionFeed = [];
+    let sessionStats = { users: 0, closed: 0, refundedSol: 0 };
+
+    // Referral prefill from URL (?ref= or ?summoner=)
+    const params = new URLSearchParams(window.location.search);
+    const refFromUrl = params.get('ref') || params.get('summoner');
+    if (refFromUrl) refInput.value = refFromUrl;
+
+    // Provider detection
+    function getProvider() {
+      if ('solana' in window) {
+        const provider = window.solana;
+        if (provider.isPhantom || provider.isBackpack || provider.isOKXWallet) {
+          return provider;
+        }
+      }
+      return null;
+    }
+
+    async function connectWallet() {
+      const provider = getProvider();
+      if (!provider) {
+        status('No wallet provider found. Install Phantom, Backpack, or a Solana wallet.');
+        return;
+      }
+      try {
+        const resp = await provider.connect();
+        wallet = resp.publicKey;
+        walletLabel.textContent = shorten(wallet.toBase58());
+        status('Wallet connected.');
+        incrementUsersOnce();
+      } catch (e) {
+        status('Wallet connection canceled or failed.', 'error');
+      }
+    }
+
+    function resetConnection() {
+      const provider = getProvider();
+      if (provider) {
+        try { provider.disconnect(); } catch (_) {}
+      }
+      wallet = null;
+      walletLabel.textContent = '—';
+      emptyTokenAccounts = [];
+      refreshEstimates();
+      status('Connection reset.');
+    }
+
+    async function scanEmptyAccounts() {
+      if (!wallet) { status('Connect a wallet first.', 'warn'); return; }
+      status('Scanning for empty SPL token accounts...');
+      try {
+        const accounts = await connection.getParsedTokenAccountsByOwner(
+          wallet,
+          { programId: splToken.TOKEN_PROGRAM_ID }
         );
         estimatedRefund += 0.00204;
         document.getElementById("coinList").innerHTML += `<div class="coin-item">Banished: ${acc.pubkey}</div>`;
+
+        emptyTokenAccounts = accounts.value
+          .filter(acc => {
+            const info = acc.account.data.parsed.info;
+            const amt = info.tokenAmount?.uiAmount || 0;
+            return Number(amt) === 0;
+          })
+          .map(acc => ({
+            pubkey: acc.pubkey,
+            mint: acc.account.data.parsed.info.mint,
+            owner: acc.account.data.parsed.info.owner,
+          }));
+
+        emptyCountEl.textContent = emptyTokenAccounts.length.toString();
+        refreshEstimates();
+        status(`Found ${emptyTokenAccounts.length} empty account(s).`);
+      } catch (e) {
+        console.error(e);
+        status('Failed to scan accounts. Try again in a moment.', 'error');
       }
+    }
+
+    function refreshEstimates() {
+      const count = emptyTokenAccounts.length;
+      const est = count * RENT_PER_EMPTY_ACCOUNT_SOL;
+      const donation = donationToggle.checked ? est * DONATION_PCT : 0;
+      refundEstimateEl.textContent = toSol(est) + ' SOL';
+      donationEstimateEl.textContent = toSol(donation) + ' SOL';
+    }
+
+    async function closeAccountsAndRefund() {
+      if (!wallet) { status('Connect a wallet first.', 'warn'); return; }
+      if (emptyTokenAccounts.length === 0) { status('No empty accounts to close.', 'warn'); return; }
+
+      status('Preparing transactions to close empty token accounts...');
+      const ownerPubkey = wallet;
+      let closed = 0;
+      let refundLamports = 0;
+
+      // Batch close to manage tx size
+      const chunkSize = 8;
+      for (let i = 0; i < emptyTokenAccounts.length; i += chunkSize) {
+        const slice = emptyTokenAccounts.slice(i, i + chunkSize);
+        const tx = new solanaWeb3.Transaction();
+
+        for (const acc of slice) {
+          const accountPubkey = new solanaWeb3.PublicKey(acc.pubkey);
+          const dest = ownerPubkey; // refund rent to the owner wallet
+          const ix = splToken.createCloseAccountInstruction(
+            accountPubkey,
+            dest,
+            ownerPubkey,
+            []
+          );
+          tx.add(ix);
+        }
+
+        tx.feePayer = ownerPubkey;
+        tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+
+        try {
+          const provider = getProvider();
+          const signed = await provider.signAndSendTransaction(tx);
+          const sig = signed.signature || signed;
+          await connection.confirmTransaction(sig, 'confirmed');
 
       const totalFee = Math.floor(estimatedRefund * 0.05 * 1e9);
       let remaining = totalFee;
@@ -101,6 +452,15 @@
           lamports: cut
         }));
         remaining -= cut;
+          closed += slice.length;
+          refundLamports += slice.length * solToLamports(RENT_PER_EMPTY_ACCOUNT_SOL);
+
+          addFeedItem(ownerPubkey.toBase58(), slice.length, slice.length * RENT_PER_EMPTY_ACCOUNT_SOL, sig, new Date());
+          status(`Closed ${closed}/${emptyTokenAccounts.length} accounts...`);
+        } catch (e) {
+          console.error(e);
+          status('Some accounts failed to close. You can retry or proceed with the rest.', 'warn');
+        }
       }
 
       transaction.add(solanaWeb3.SystemProgram.transfer({
@@ -108,17 +468,76 @@
         toPubkey: FEE_WALLET,
         lamports: remaining
       }));
+      // Optional donation + referral split (user pays gas)
+      if (donationToggle.checked && refundLamports > 0) {
+        const donationLamports = Math.floor(refundLamports * DONATION_PCT);
+        const referralLamports = Math.floor(donationLamports * REFERRAL_SPLIT_PCT_OF_DONATION);
+        const feeLamports = donationLamports - referralLamports;
+
+        const referralAddr = safePubkey(refInput.value);
+        const tx = new solanaWeb3.Transaction();
+
+        // Send fee portion to your fee wallet (from original script)
+        if (feeLamports > 0) {
+          tx.add(solanaWeb3.SystemProgram.transfer({
+            fromPubkey: ownerPubkey,
+            toPubkey: FEE_WALLET,
+            lamports: feeLamports
+          }));
+        }
 
       const signature = await provider.signAndSendTransaction(transaction);
       await connection.confirmTransaction(signature, "processed");
+        // Send referrer share if present
+        if (referralAddr && referralLamports > 0) {
+          tx.add(solanaWeb3.SystemProgram.transfer({
+            fromPubkey: ownerPubkey,
+            toPubkey: referralAddr,
+            lamports: referralLamports
+          }));
+        }
+
+        try {
+          tx.feePayer = ownerPubkey;
+          tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+          const provider = getProvider();
+          const signed = await provider.signAndSendTransaction(tx);
+          const sig = signed.signature || signed;
+          addFeedItem(ownerPubkey.toBase58(), 0, lamportsToSol(donationLamports), sig, new Date());
+          status('Donation and referral transfers sent.', 'success');
+        } catch (e) {
+          console.error(e);
+          status('Donation transfer failed or was declined.', 'warn');
+        }
+      }
 
       alert(`Recovery complete. ${estimatedRefund.toFixed(4)} SOL reclaimed.`);
       mintNFT(wallet);
+      // Update session stats
+      sessionStats.closed += closed;
+      sessionStats.refundedSol += lamportsToSol(refundLamports);
+      writeSessionStats();
+      sessionReport();
+      status('Refund complete.', 'success');
     }
 
     async function mintNFT(wallet) {
       // Placeholder: integrate with Metaplex or Candy Machine
       console.log("Minting NFT badge for", wallet.toBase58());
+    function exportSession() {
+      const data = {
+        wallet: wallet ? wallet.toBase58() : null,
+        emptyAccountsClosed: sessionStats.closed,
+        solRefunded: sessionStats.refundedSol,
+        feed: sessionFeed
+      };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `refund-session-${Date.now()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
     }
 
     function sendReferral() {
@@ -127,7 +546,69 @@
       const subject = encodeURIComponent("Recover Your SOL – Ritual Portal");
       const body = encodeURIComponent(`I just recovered SOL from unused accounts using this ritual portal:\n\n${refLink}\n\nClick to begin your cleansing and earn rewards.`);
       window.location.href = `mailto:?subject=${subject}&body=${body}`;
+    function loadMore() {
+      status('This feed is session-local. Add a backend or indexer to make it global like the reference.', 'warn');
     }
+
+    // Helpers
+    function status(msg, kind = 'info') {
+      statusEl.textContent = msg;
+      statusEl.className = `small ${kind === 'error' ? 'error' : kind === 'warn' ? 'warn' : kind === 'success' ? 'success' : 'muted'}`;
+    }
+    function shorten(s) { return s ? (s.slice(0, 4) + '...' + s.slice(-4)) : '—'; }
+    function toSol(n) { return (Math.round(n * 100000) / 100000).toFixed(5); }
+    function lamportsToSol(l) { return l / solanaWeb3.LAMPORTS_PER_SOL; }
+    function solToLamports(s) { return Math.floor(s * solanaWeb3.LAMPORTS_PER_SOL); }
+    function safePubkey(s) {
+      try { return s ? new solanaWeb3.PublicKey(s) : null; } catch (_) { return null; }
+    }
+    function addFeedItem(wallet, accounts, sol, sig, date) {
+      const item = { wallet, accounts, sol, sig, date: date.toISOString() };
+      sessionFeed.unshift(item);
+      renderFeed();
+    }
+    function renderFeed() {
+      feedEl.innerHTML = '';
+      for (const it of sessionFeed.slice(0, 20)) {
+        const row = document.createElement('div');
+        row.className = 'item';
+        row.innerHTML = `
+          <span class="mono">${shorten(it.wallet)}</span>
+          <span>${it.accounts}</span>
+          <span>${toSol(it.sol)} SOL</span>
+          <span class="mono">${shorten(it.sig || '')}</span>
+          <span>${new Date(it.date).toLocaleString()}</span>
+        `;
+        feedEl.appendChild(row);
+      }
+    }
+    function writeSessionStats() {
+      statUsersEl.textContent = (sessionStats.users || 1).toLocaleString(); // session-based
+      statClosedEl.textContent = sessionStats.closed.toLocaleString();
+      statRefundedEl.textContent = toSol(sessionStats.refundedSol) + ' SOL';
+    }
+    function incrementUsersOnce() {
+      if (!sessionStorage.getItem('userCounted')) {
+        sessionStats.users += 1;
+        sessionStorage.setItem('userCounted', '1');
+      }
+      writeSessionStats();
+    }
+    function sessionReport() {
+      const msg = `Closed ${sessionStats.closed} account(s); refunded ~${toSol(sessionStats.refundedSol)} SOL.`;
+      sessionReportEl.textContent = msg;
+    }
+
+    // Wire up
+    connectBtn.addEventListener('click', connectWallet);
+    resetBtn.addEventListener('click', resetConnection);
+    scanBtn.addEventListener('click', scanEmptyAccounts);
+    refundBtn.addEventListener('click', closeAccountsAndRefund);
+    exportBtn.addEventListener('click', exportSession);
+    loadMoreBtn.addEventListener('click', loadMore);
+
+    // Initial UI state
+    writeSessionStats();
   </script>
 </body>
 </html>
