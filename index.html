@@ -1,644 +1,497 @@
-Full index.html (multi-chain recovery portal — safe, non‑destructive)
-
-Save this exactly as index.html, serve over HTTPS or open inside wallet in‑app browsers (Phantom for SOL, MetaMask/WalletConnect for EVM). This single-file dApp:
-
-• Provides chain selector: Solana, Ethereum, Base, Polygon, Sui, Bitcoin.
-• Connects to Phantom (SOL) and MetaMask/Ethereum-compatible wallets (ETH/Base/Polygon) via Ethers.js; Sui is a stub (placeholder for Sui wallet integration); Bitcoin uses manual address/PSBT flow via user-provided wallet.
-• Uses your provided destination addresses for recovered assets.
-• Offers Simulator mode (builds unsigned preview) and Refund-only execution for SOL (non-destructive close of zero-balance SPL token accounts). EVM flows include safe preview and a sweep-token UI placeholder (no destructive burning).
-• Includes robust provider detection, deep-link fallback for mobile Phantom, RPC configuration, and retry logic for batched account info requests.
-• Intentionally avoids any destructive/burning operations.
-
-
-Open in Phantom mobile browser (Phantom → Browser → paste URL) for Solana flows, or in desktop Chrome/Brave with MetaMask for EVM flows.
-
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Multi-Chain Recovery Portal — Safe</title>
-  <meta name="description" content="Multi-chain recovery portal: SOL, ETH, Base, Polygon, Sui, BTC. Simulator + refund-only safe flows."/>
+  <title>SOL Recovery — Robust Clone (Safe)</title>
   <style>
     :root{--bg:#041026;--card:#071427;--muted:#9ab0c8;--accent:#60a5fa;--good:#34d399;--danger:#fb7185}
     html,body{height:100%;margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial;background:linear-gradient(180deg,#031226 0,#071429 100%);color:#e6eef8}
-    .wrap{max-width:1100px;margin:14px auto;padding:12px}
+    .wrap{max-width:980px;margin:14px auto;padding:14px}
     .card{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border-radius:12px;padding:12px;margin-bottom:12px;border:1px solid rgba(255,255,255,0.03)}
-    h1{margin:0;font-size:20px}
-    .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+    h1{margin:0;font-size:18px}
+    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
     button{padding:10px 12px;border-radius:10px;border:0;background:linear-gradient(90deg,var(--accent),#38bdf8);color:#022;font-weight:700}
     .ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted);padding:8px 10px;border-radius:8px}
-    input[type=text], select{width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit}
+    input[type=text]{width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit}
     table{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px}
     th,td{padding:8px 6px;text-align:left;border-bottom:1px dashed rgba(255,255,255,0.02)}
-    pre{background:#021026;padding:10px;border-radius:8px;color:#cfe9ff;max-height:360px;overflow:auto;white-space:pre-wrap}
+    pre{background:#021026;padding:10px;border-radius:8px;color:#cfe9ff;max-height:320px;overflow:auto;white-space:pre-wrap}
     .muted{color:var(--muted);font-size:13px}
-    .small{font-size:12px;color:var(--muted)}
     .danger{color:var(--danger);font-weight:700}
     .good{color:var(--good);font-weight:700}
     .link{color:var(--accent);text-decoration:none}
-    @media(max-width:840px){ .row{flex-direction:column;align-items:flex-start} button{width:100%} }
+    @media(max-width:640px){ .row{flex-direction:column;align-items:flex-start} button{width:100%} }
   </style>
 
-  <!-- Dependencies -->
+  <!-- Load libs in proper order and defer so global IIFEs are available to main script -->
   <script defer src="https://unpkg.com/@solana/web3.js@1.76.0/lib/index.iife.min.js"></script>
   <script defer src="https://unpkg.com/@solana/spl-token@0.3.5/lib/index.iife.js"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/ethers@6.9.0/dist/ethers.umd.min.js"></script>
 </head>
 <body>
   <div class="wrap">
     <div class="card">
-      <h1>Multi-Chain Recovery Portal — Safe</h1>
-      <div class="muted">Recover rent/dust and preview recovery actions across Solana, Ethereum, Base, Polygon, Sui, and Bitcoin. Simulator ON by default. No burning.</div>
+      <h1>SOL Recovery — Robust Safe Clone</h1>
+      <div class="muted">Preview destructive flows safely or run refund-only to close zero-balance SPL token accounts and recover rent.</div>
     </div>
 
     <div class="card">
-      <div class="row" style="align-items:center">
-        <div style="width:220px">
-          <label class="small muted">Chain</label>
-          <select id="chainSelect">
-            <option value="sol">Solana</option>
-            <option value="eth">Ethereum</option>
-            <option value="base">Base</option>
-            <option value="polygon">Polygon</option>
-            <option value="sui">Sui</option>
-            <option value="btc">Bitcoin</option>
-          </select>
-        </div>
-
-        <div style="width:200px">
-          <label class="small muted">Simulator</label>
-          <div><label><input id="simMode" type="checkbox" checked/> Preview only</label></div>
-        </div>
-
-        <div style="flex:1"></div>
-
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <div style="flex:1"><button id="connectBtn">Connect Wallet</button></div>
         <div style="min-width:220px">
-          <label class="small muted">Destination (auto-filled)</label>
-          <input id="destAddress" type="text" value="5hSWosj58ki4A6hSfQrvteQU5QvyCWmhHn4AuqgaQzqr"/>
-          <div class="small muted">You can override per chain if needed</div>
-        </div>
-      </div>
-
-      <div class="row" style="margin-top:12px">
-        <div style="width:260px">
-          <label class="small muted">RPC / Network URL</label>
-          <input id="rpcInput" type="text" value="https://api.mainnet-beta.solana.com"/>
-        </div>
-
-        <div style="width:160px">
-          <label class="small muted">Batch size</label>
-          <input id="batchInput" type="text" value="100"/>
-        </div>
-
-        <div style="width:240px">
-          <label class="small muted">EVM provider</label>
-          <select id="evmProvider">
-            <option value="metamask">MetaMask</option>
-            <option value="walletconnect">WalletConnect (not active here)</option>
-          </select>
-        </div>
-
-        <div style="flex:1"></div>
-
-        <div style="min-width:160px">
-          <button id="connectBtn">Connect Wallet</button>
+          <label class="muted small"><input id="simToggle" type="checkbox" checked/> Simulator (preview only)</label>
+          <div id="status" class="muted small">Status: Not connected</div>
         </div>
       </div>
 
       <div class="row" style="margin-top:10px">
-        <div style="flex:1">
-          <div class="small muted">Connected</div>
-          <div id="connectedInfo" style="font-weight:700">Not connected</div>
-        </div>
-
-        <div style="width:160px">
-          <div class="small muted">Balance</div>
-          <div id="balanceInfo">—</div>
-        </div>
-
-        <div style="width:160px">
-          <div class="small muted">Status</div>
-          <div id="statusInfo" class="small muted">Idle</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Chain-specific panels -->
-    <div id="solPanel" class="card" style="display:block">
-      <strong>Solana Recovery</strong>
-      <div class="muted small">Scan parsed token accounts and close zero-balance token accounts to recover rent (refund-only).</div>
-
-      <div class="row" style="margin-top:12px">
-        <button id="solScanBtn" class="ghost" disabled>Scan Token Accounts</button>
-        <button id="solPreviewBtn" class="ghost">Preview Selected</button>
-        <button id="solCloseBtn" class="ghost" disabled>Close Selected (Refund)</button>
-        <div style="margin-left:auto" class="small muted">Donations routed to destination address</div>
-      </div>
-
-      <div style="margin-top:12px">
-        <table>
-          <thead><tr><th style="width:36px"><input id="solSelectAll" type="checkbox"/></th><th>Token Account</th><th>Mint</th><th>Amount</th><th>Lamports</th><th>Action</th></tr></thead>
-          <tbody id="solInventory"><tr><td colspan="6" class="small muted center">No data — connect and scan</td></tr></tbody>
-        </table>
-      </div>
-    </div>
-
-    <div id="evmPanel" class="card" style="display:none">
-      <strong>EVM Recovery (ETH / Base / Polygon)</strong>
-      <div class="muted small">Connect MetaMask and scan for token balances and dust. This UI provides safe preview and a sweep transfer flow. No burn instructions.</div>
-
-      <div class="row" style="margin-top:12px">
-        <button id="evmConnectBtn" class="ghost" disabled>Connect EVM Wallet</button>
-        <button id="evmScanBtn" class="ghost" disabled>Scan Tokens</button>
-        <button id="evmPreviewBtn" class="ghost">Preview Sweep</button>
-        <button id="evmExecuteBtn" class="ghost" disabled>Execute Sweep</button>
-      </div>
-
-      <div style="margin-top:12px">
-        <table>
-          <thead><tr><th style="width:36px"></th><th>Token</th><th>Symbol</th><th>Balance</th><th>Action</th></tr></thead>
-          <tbody id="evmInventory"><tr><td colspan="5" class="small muted center">No data — connect and scan</td></tr></tbody>
-        </table>
-      </div>
-    </div>
-
-    <div id="suiPanel" class="card" style="display:none">
-      <strong>Sui Recovery (stub)</strong>
-      <div class="muted small">Sui wallet integration is a placeholder. This panel shows where Sui-specific scan/reclaim logic would go. Implement Sui wallet SDK integration and reclaim flows here.</div>
-      <div class="row" style="margin-top:12px">
-        <button id="suiStubBtn" class="ghost">Sui: Connect (Stub)</button>
-        <button id="suiScanBtn" class="ghost">Scan (Stub)</button>
-      </div>
-    </div>
-
-    <div id="btcPanel" class="card" style="display:none">
-      <strong>Bitcoin Recovery (manual)</strong>
-      <div class="muted small">Bitcoin recovery requires PSBT signing in a user wallet. This panel provides a consolidation UI; the user must export PSBT and sign in their wallet. No automatic sweeping is attempted here.</div>
-
-      <div class="row" style="margin-top:12px">
-        <label class="small muted">Destination BTC Address</label>
-        <input id="btcDest" type="text" value="bc1qpqxcvfkj45cg3hcnf3a7skjmzr9dzr0m7exnwh"/>
-        <button id="btcPrepareBtn" class="ghost">Prepare PSBT (Stub)</button>
+        <div style="flex:1"><div class="muted small">Connected</div><div id="walletAddr" style="font-weight:700">Not connected</div></div>
+        <div style="width:160px"><div class="muted small">SOL Balance</div><div id="solBal">—</div></div>
+        <div style="width:140px"><div class="muted small">Eligible</div><div id="eligibleCount">—</div></div>
       </div>
     </div>
 
     <div class="card">
+      <div class="row" style="gap:12px">
+        <div style="flex:1"><label class="muted small">RPC Endpoint</label><input id="rpcInput" type="text" value="https://api.mainnet-beta.solana.com"/></div>
+        <div style="width:260px">
+          <label class="muted small">Donation Pubkey (optional)</label>
+          <input id="donationInput" type="text" placeholder="Optional donation pubkey"/>
+          <label class="muted small" style="margin-top:6px">Donation %</label>
+          <input id="donationPct" type="text" value="15"/>
+        </div>
+        <div style="width:120px"><label class="muted small">Batch</label><input id="batchInput" type="text" value="100"/></div>
+      </div>
+
+      <div class="row" style="margin-top:12px">
+        <button id="applyBtn" class="ghost">Apply</button>
+        <button id="scanBtn" class="ghost" disabled>Scan Accounts</button>
+        <button id="previewBtn" class="ghost">Preview Selected</button>
+        <button id="closeBtn" class="ghost" disabled>Close Selected (refund)</button>
+        <div style="margin-left:auto" class="muted small">Simulator ON prevents signing/broadcast</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <strong>Inventory (eligible zero-balance token accounts)</strong>
+      <div class="muted small">Only token accounts with tokenAmount.amount == "0" and owned by your wallet are eligible for refund-only close.</div>
+      <table>
+        <thead><tr><th style="width:36px"><input id="selectAll" type="checkbox"/></th><th>Token Account</th><th>Mint</th><th>Amount</th><th>Lamports</th><th class="center">Action</th></tr></thead>
+        <tbody id="inventoryBody"><tr><td colspan="6" class="muted small center">No data — Connect and Scan</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="card">
       <strong>Preview / Debug</strong>
+      <div class="muted small">Preview builds unsigned tx base64 and human-readable action list.</div>
       <pre id="debug">Ready.</pre>
     </div>
 
     <div class="card">
       <strong>Transactions</strong>
       <table>
-        <thead><tr><th>Chain</th><th>Signature / Tx</th><th>Recovered</th><th>Time</th></tr></thead>
-        <tbody id="txList"><tr><td colspan="4" class="small muted center">No transactions yet</td></tr></tbody>
+        <thead><tr><th>Signature</th><th>Recovered (SOL)</th><th>Donation (SOL)</th><th>Time</th></tr></thead>
+        <tbody id="txBody"><tr><td colspan="4" class="muted small center">No transactions yet</td></tr></tbody>
       </table>
+    </div>
+
+    <div class="card small muted">
+      <div class="danger">Safety: No burning. Refund-only closes only empty token accounts you own and returns rent. Simulator only previews.</div>
     </div>
   </div>
 
 <script>
-/* Multi-chain recovery portal main script (safe, non-destructive) */
+/* ---------- Main script (runs after web3 and spl-token deferred) ---------- */
 (async function(){
-  // ---------- Configured destination addresses (from user) ----------
-  const DESTINATIONS = {
-    sol: '5hSWosj58ki4A6hSfQrvteQU5QvyCWmhHn4AuqgaQzqr',
-    eth: '0x2B6c91A3c8c19b0eD55B2E4deBceCC6cD0344504',
-    base: '0x2B6c91A3c8c19b0eD55B2E4deBceCC6cD0344504',
-    polygon: '0x2B6c91A3c8c19b0eD55B2E4deBceCC6cD0344504',
-    sui: '0xa2fa6e0693929817221c9842ea65f7440a75ceeb03e2c5b61d12f074507f9829',
-    btc: 'bc1qpqxcvfkj45cg3hcnf3a7skjmzr9dzr0m7exnwh'
-  };
+  // Fallbacks for TOKEN_PROGRAM_ID and spl-token helpers
+  const TOKEN_PROGRAM_ID = (typeof splToken !== 'undefined' && splToken && splToken.TOKEN_PROGRAM_ID)
+    ? splToken.TOKEN_PROGRAM_ID
+    : (solanaWeb3 && solanaWeb3.TOKEN_PROGRAM_ID) || new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
 
-  // ---------- Library fallbacks and imports ----------
-  const web3 = window.solanaWeb3;
-  const spl = window.splToken;
-  const ethers = window.ethers;
-  const TOKEN_PROGRAM_ID = (typeof spl !== 'undefined' && spl && spl.TOKEN_PROGRAM_ID) ? spl.TOKEN_PROGRAM_ID : (web3 && web3.TOKEN_PROGRAM_ID) || new web3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
-  const CREATE_CLOSE = (typeof spl !== 'undefined' && spl && spl.createCloseAccountInstruction) ? spl.createCloseAccountInstruction : null;
+  const createCloseAccountInstruction = (typeof splToken !== 'undefined' && splToken && splToken.createCloseAccountInstruction)
+    ? splToken.createCloseAccountInstruction
+    : null; // we'll guard usage and error early if missing
 
-  // ---------- UI refs ----------
-  const chainSelect = document.getElementById('chainSelect');
+  // web3 helpers
+  const { Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } = solanaWeb3;
+
+  // UI refs
   const connectBtn = document.getElementById('connectBtn');
-  const simMode = document.getElementById('simMode');
-  const destAddress = document.getElementById('destAddress');
+  const simToggle = document.getElementById('simToggle');
   const rpcInput = document.getElementById('rpcInput');
+  const donationInput = document.getElementById('donationInput');
+  const donationPct = document.getElementById('donationPct');
   const batchInput = document.getElementById('batchInput');
-  const statusInfo = document.getElementById('statusInfo');
-  const connectedInfo = document.getElementById('connectedInfo');
-  const balanceInfo = document.getElementById('balanceInfo');
-  const debug = document.getElementById('debug');
+  const applyBtn = document.getElementById('applyBtn');
+  const scanBtn = document.getElementById('scanBtn');
+  const previewBtn = document.getElementById('previewBtn');
+  const closeBtn = document.getElementById('closeBtn');
+  const statusEl = document.getElementById('status');
+  const walletAddrEl = document.getElementById('walletAddr');
+  const solBalEl = document.getElementById('solBal');
+  const eligibleCountEl = document.getElementById('eligibleCount');
+  const inventoryBody = document.getElementById('inventoryBody');
+  const debugEl = document.getElementById('debug');
+  const txBody = document.getElementById('txBody');
+  const selectAll = document.getElementById('selectAll');
 
-  const solPanel = document.getElementById('solPanel');
-  const evmPanel = document.getElementById('evmPanel');
-  const suiPanel = document.getElementById('suiPanel');
-  const btcPanel = document.getElementById('btcPanel');
+  // State
+  let RPC_URL = rpcInput.value.trim() || 'https://api.mainnet-beta.solana.com';
+  let DONATION_PUBKEY = donationInput.value.trim() || '';
+  let DONATION_PCT = Number(donationPct.value) || 15;
+  let BATCH_SIZE = Number(batchInput.value) || 100;
 
-  const solScanBtn = document.getElementById('solScanBtn');
-  const solPreviewBtn = document.getElementById('solPreviewBtn');
-  const solCloseBtn = document.getElementById('solCloseBtn');
-  const solInventory = document.getElementById('solInventory');
-  const solSelectAll = document.getElementById('solSelectAll');
-
-  const evmConnectBtn = document.getElementById('evmConnectBtn');
-  const evmScanBtn = document.getElementById('evmScanBtn');
-  const evmPreviewBtn = document.getElementById('evmPreviewBtn');
-  const evmExecuteBtn = document.getElementById('evmExecuteBtn');
-  const evmInventory = document.getElementById('evmInventory');
-
-  const suiStubBtn = document.getElementById('suiStubBtn');
-  const suiScanBtn = document.getElementById('suiScanBtn');
-
-  const btcPrepareBtn = document.getElementById('btcPrepareBtn');
-  const btcDest = document.getElementById('btcDest');
-
-  const txList = document.getElementById('txList');
-
-  // ---------- State ----------
-  let currentChain = chainSelect.value; // sol / eth / base / polygon / sui / btc
-  let rpcUrl = rpcInput.value;
-  let providerSol = null; // window.solana
-  let solConnection = new web3.Connection(rpcUrl, 'confirmed');
-  let solPublicKey = null;
-  let eligibleSol = []; // eligible zero-balance accounts
+  let conn = new Connection(RPC_URL, 'confirmed');
+  let provider = null;
+  let publicKey = null;
+  let eligible = []; // eligible accounts list
   let busy = false;
 
-  let evmProvider = null; // ethers provider
-  let evmSigner = null;
-  let evmAddress = null;
-  let evmTokens = []; // scanned token balances
+  // Logging helper
+  function log(...args){ const t = '['+new Date().toISOString()+'] '; debugEl.textContent = t + args.map(a => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ') + "\n" + debugEl.textContent; console.log(...args); }
+  function short(s){ s = String(s); return s.slice(0,4) + '…' + s.slice(-4); }
+  function lamToSol(l){ return Number(l) / LAMPORTS_PER_SOL; }
+  function fmtSOL(n){ return Number(n).toFixed(6) + ' SOL'; }
+  function safePub(p){ try { return new PublicKey(p); } catch(e){ return null; } }
+  function setStatus(s){ statusEl.textContent = 'Status: ' + s; }
 
-  // ---------- Helpers ----------
-  function log(...args){ const ts='['+new Date().toISOString()+'] '; debug.textContent = ts + args.map(a => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ') + "\n" + debug.textContent; console.log(...args); }
-  function short(s){ s = String(s); return s.slice(0,6) + '…' + s.slice(-6); }
-  function setStatus(s){ statusInfo.textContent = s; }
-  function setConnected(info){ connectedInfo.textContent = info; }
-  function setBalance(b){ balanceInfo.textContent = b; }
-  function safePub(p){ try { return new web3.PublicKey(p); } catch(e){ return null; } }
-
-  // Chain selector wiring
-  chainSelect.onchange = () => {
-    currentChain = chainSelect.value;
-    destAddress.value = DESTINATIONS[currentChain] || '';
-    rpcUrl = rpcInput.value;
-    // show/hide panels
-    solPanel.style.display = currentChain === 'sol' ? 'block' : 'none';
-    evmPanel.style.display = (currentChain === 'eth' || currentChain === 'base' || currentChain === 'polygon') ? 'block' : 'none';
-    suiPanel.style.display = currentChain === 'sui' ? 'block' : 'none';
-    btcPanel.style.display = currentChain === 'btc' ? 'block' : 'none';
-    setStatus('Chain switched to ' + currentChain.toUpperCase());
-    resetConnectionState();
-  };
-
-  function resetConnectionState(){
-    setConnected('Not connected');
-    setBalance('—');
-    log('Reset connection state for chain', currentChain);
-  }
-
-  // ---------- Provider detection / connect helpers ----------
-
-  // Solana: wait for provider injection
-  function waitForSolProvider(timeout = 6000){
+  // Wait for provider injection (longer for mobile)
+  function waitForProvider(timeout = 6000){
     return new Promise(resolve => {
       if(window.solana && window.solana.isPhantom) return resolve(window.solana);
-      const t = setInterval(()=>{ if(window.solana && window.solana.isPhantom){ clearInterval(t); resolve(window.solana); } }, 200);
-      setTimeout(()=>{ clearInterval(t); resolve(null); }, timeout);
+      let resolved = false;
+      const tid = setInterval(()=> {
+        if(window.solana && window.solana.isPhantom){ clearInterval(tid); resolved = true; log('provider injected'); resolve(window.solana); }
+      }, 200);
+      setTimeout(()=>{ if(!resolved){ clearInterval(tid); log('provider injection timed out'); resolve(null); } }, timeout);
     });
   }
 
-  async function connectSol(){
+  async function ensureProvider(){
+    if(provider && window.solana && window.solana.isPhantom) return provider;
+    const inj = await waitForProvider();
+    if(inj) provider = inj;
+    return provider;
+  }
+
+  // Connect flow (must be run inside a user gesture)
+  async function connectWallet(){
+    if(busy) return;
+    busy = true;
+    connectBtn.disabled = true; connectBtn.textContent = 'Connecting...'; setStatus('Connecting');
+    log('connect: ensuring provider');
+    const p = await ensureProvider();
+    if(!p){
+      log('No provider injected; open this page inside Phantom or use the wallet browser.');
+      alert('Phantom provider not detected. Open this page inside Phantom in-app browser or ensure extension is unlocked (desktop).');
+      connectBtn.disabled = false; connectBtn.textContent = 'Connect Wallet'; setStatus('Provider missing'); busy = false; return;
+    }
+    provider = p;
+
+    // Wire provider events
     try {
-      setStatus('Connecting Phantom...');
-      providerSol = await waitForSolProvider(6000);
-      if(!providerSol){ setStatus('Phantom not detected'); log('Phantom provider not detected'); alert('Open this page inside Phantom browser or ensure extension is available.'); return; }
-      try {
-        const resp = await providerSol.connect({ onlyIfTrusted: true });
-        solPublicKey = resp?.publicKey || providerSol.publicKey;
-      } catch(e){}
-      if(!solPublicKey){
-        try {
-          const resp2 = await providerSol.connect();
-          solPublicKey = resp2?.publicKey || providerSol.publicKey;
-        } catch(e){
-          log('Solana explicit connect rejected', e && e.message);
-          setStatus('Phantom connect rejected');
-          return;
-        }
+      if(provider.on){
+        provider.on('connect', pk => { log('provider event connect', pk?.toString?.()); publicKey = pk || provider.publicKey; finalizeConnected(); });
+        provider.on('disconnect', () => { log('provider disconnected'); publicKey = null; walletAddrEl.textContent = 'Not connected'; solBalEl.textContent = '—'; eligibleCountEl.textContent = '—'; scanBtn.disabled = true; connectBtn.disabled = false; connectBtn.textContent = 'Connect Wallet'; setStatus('Disconnected'); });
       }
-      setConnected('SOL: ' + solPublicKey.toString());
-      setStatus('Connected to Phantom');
-      // new connection to RPC (user may have changed)
-      rpcUrl = rpcInput.value.trim() || rpcUrl;
-      solConnection = new web3.Connection(rpcUrl, 'confirmed');
-      await refreshSolBalance();
-      solScanBtn.disabled = false;
-    } catch(e){ log('connectSol error', e && e.message); setStatus('Connect error'); }
-  }
+    } catch(e){ log('provider.on wiring failed', e && e.message); }
 
-  async function refreshSolBalance(){
-    if(!solPublicKey) return;
+    // try trusted connect
     try {
-      const lam = await solConnection.getBalance(solPublicKey, 'confirmed');
-      setBalance((lam / web3.LAMPORTS_PER_SOL).toFixed(6) + ' SOL');
-    } catch(e){ log('refreshSolBalance failed', e && e.message); setBalance('—'); }
-  }
+      log('Attempting trusted connect');
+      const resp = await provider.connect({ onlyIfTrusted: true });
+      if(resp && resp.publicKey){ publicKey = resp.publicKey; finalizeConnected(); busy = false; return; }
+    } catch(e){ log('trusted connect failed', e && e.message); }
 
-  // EVM connect via MetaMask (ethers)
-  async function connectEVM(){
+    // explicit connect (user will approve)
     try {
-      setStatus('Connecting EVM wallet...');
-      if(typeof window.ethereum === 'undefined'){
-        alert('No Ethereum provider detected (MetaMask). Install or open MetaMask in-app browser.');
-        setStatus('EVM provider missing');
-        return;
-      }
-      evmProvider = new ethers.BrowserProvider(window.ethereum);
-      await evmProvider.send('eth_requestAccounts', []);
-      evmSigner = await evmProvider.getSigner();
-      evmAddress = await evmSigner.getAddress();
-      setConnected('EVM: ' + evmAddress);
-      setStatus('Connected to EVM wallet');
-      evmConnectBtn.disabled = true;
-      evmScanBtn.disabled = false;
-      // show balance
-      try {
-        const bal = await evmProvider.getBalance(evmAddress);
-        setBalance(ethers.formatEther(bal) + ' ETH');
-      } catch(e){ log('EVM getBalance failed', e && e.message); }
-    } catch(e){ log('connectEVM error', e && e.message); setStatus('EVM connect error'); }
+      log('Requesting explicit connect (approve in wallet)');
+      const resp = await provider.connect();
+      publicKey = resp.publicKey || provider.publicKey;
+      if(!publicKey && provider.publicKey) publicKey = provider.publicKey;
+      if(!publicKey) throw new Error('No publicKey returned');
+      finalizeConnected();
+    } catch(err){
+      log('Explicit connect failed or rejected', err && (err.message||err));
+      // Fallback: open deep-link to force wallet UI (mobile)
+      const phantomUrl = `https://phantom.app/ul/v1/connect?app_url=${encodeURIComponent(location.origin)}&redirect_link=${encodeURIComponent(location.href)}`;
+      try { window.open(phantomUrl, '_blank'); log('Opened Phantom deep-link'); } catch(e){ log('Deep-link open failed', e && e.message); }
+      alert('Connect rejected or failed. Approve the connection in Phantom or open this page in the Phantom browser and try again.');
+      connectBtn.disabled = false; connectBtn.textContent = 'Connect Wallet'; setStatus('Not connected'); busy = false;
+      return;
+    } finally { busy = false; }
   }
 
-  // ---------- Solana scanning & refund-only logic (refund-only: close zero-balance SPL accounts) ----------
+  function finalizeConnected(){
+    walletAddrEl.textContent = publicKey.toString();
+    connectBtn.textContent = 'Connected';
+    connectBtn.disabled = true;
+    scanBtn.disabled = false;
+    closeBtn.disabled = true;
+    setStatus('Connected');
+    log('Connected as', publicKey.toString());
+    refreshBalance().catch(e => log('balance error', e && e.message));
+  }
 
-  async function batchGetMultipleAccountsInfo(conn, pubkeys, retries = 3, delayFactor = 300){
+  async function refreshBalance(){
+    if(!publicKey) return;
+    try {
+      const bal = await conn.getBalance(publicKey, 'confirmed');
+      solBalEl.textContent = fmtSOL(lamToSol(bal));
+    } catch(e){ log('getBalance failed', e && e.message); solBalEl.textContent = '—'; }
+  }
+
+  // Batch helper with retries
+  async function batchGetMultipleAccountsInfo(pubkeys, retries = 3, delayFactor = 300){
     for(let attempt=0; attempt<=retries; attempt++){
       try { return await conn.getMultipleAccountsInfo(pubkeys); }
-      catch(e){ log('getMultipleAccountsInfo attempt', attempt, 'failed', e && e.message); if(attempt < retries) await new Promise(r => setTimeout(r, delayFactor * (attempt+1))); }
+      catch(e){
+        log('getMultipleAccountsInfo attempt', attempt, 'failed', e && e.message);
+        if(attempt < retries) await new Promise(r => setTimeout(r, delayFactor * (attempt + 1)));
+      }
     }
     throw new Error('getMultipleAccountsInfo failed after retries');
   }
 
-  async function solScan(){
-    if(!solPublicKey){ alert('Connect Phantom first'); return; }
-    if(busy){ return; }
+  // Scan accounts: getParsedTokenAccountsByOwner -> getMultipleAccountsInfo batches -> filter zero-owned
+  async function scanAccounts(){
+    if(!publicKey){ alert('Connect wallet first'); return; }
+    if(busy) return;
     busy = true;
-    solInventory.innerHTML = '<tr><td colspan="6" class="small muted center">Scanning...</td></tr>';
+    scanBtn.disabled = true;
+    inventoryBody.innerHTML = '<tr><td colspan="6" class="muted small center">Scanning token accounts...</td></tr>';
+    log('Scanning accounts for', publicKey.toString());
+    eligible = [];
     try {
-      const parsed = await solConnection.getParsedTokenAccountsByOwner(solPublicKey, { programId: TOKEN_PROGRAM_ID });
+      const parsed = await conn.getParsedTokenAccountsByOwner(publicKey, { programId: TOKEN_PROGRAM_ID });
       const accounts = parsed.value || [];
       log('Parsed token accounts', accounts.length);
-      if(!accounts.length){ solInventory.innerHTML = '<tr><td colspan="6" class="small muted center">No token accounts</td></tr>'; busy=false; return; }
-      const pubkeys = accounts.map(v => new web3.PublicKey(v.pubkey));
+      if(!accounts.length){
+        inventoryBody.innerHTML = '<tr><td colspan="6" class="muted small center">No token accounts</td></tr>';
+        eligibleCountEl.textContent = '0'; busy=false; scanBtn.disabled=false; return;
+      }
+      // map pubkeys and batch fetch account infos
+      const pubkeys = accounts.map(v => new PublicKey(v.pubkey));
       const unique = [...new Map(pubkeys.map(p => [p.toBase58(), p])).values()];
       const infos = {};
-      const batch = Number(batchInput.value) || 100;
-      for(let i=0;i<unique.length;i+=batch){
-        const slice = unique.slice(i, i+batch);
-        const res = await batchGetMultipleAccountsInfo(solConnection, slice, 3);
+      for(let i=0;i<unique.length;i+=BATCH_SIZE){
+        const slice = unique.slice(i, i+BATCH_SIZE);
+        const res = await batchGetMultipleAccountsInfo(slice, 3);
         for(let j=0;j<slice.length;j++) infos[slice[j].toBase58()] = res[j];
       }
-      eligibleSol = [];
+      // filter eligible: zero amount && owner equals wallet
       for(const v of accounts){
-        const parsedInfo = v.account.data.parsed?.info;
-        if(!parsedInfo) continue;
-        const amountRaw = parsedInfo.tokenAmount?.amount || "0";
-        if(BigInt(amountRaw) !== 0n) continue; // only zero-balance
-        if(parsedInfo.owner !== solPublicKey.toString()) continue; // only owned accounts
+        const info = v.account.data.parsed?.info;
+        if(!info) continue;
+        const amountRaw = info.tokenAmount?.amount || "0";
+        if(BigInt(amountRaw) !== 0n) continue;
+        if(info.owner !== publicKey.toString()) continue;
         const onchain = infos[v.pubkey];
         const lamports = onchain ? onchain.lamports : 0;
-        eligibleSol.push({ pubkey: v.pubkey, mint: parsedInfo.mint, lamports, owner: parsedInfo.owner, rawAmount: amountRaw });
+        eligible.push({ pubkey: v.pubkey, mint: info.mint, amountUi: info.tokenAmount?.uiAmount || 0, amountRaw, lamports, owner: info.owner });
       }
-      renderSolInventory();
-      setStatus('Scan complete');
-      log('eligibleSol count', eligibleSol.length);
-    } catch(e){ log('solScan failed', e && e.message); solInventory.innerHTML = '<tr><td colspan="6" class="small muted center">Scan failed; see debug</td></tr>'; setStatus('Scan failed'); }
-    busy = false;
+      eligible.sort((a,b)=>b.lamports - a.lamports);
+      renderInventory();
+      log('Scan complete; eligible:', eligible.length);
+    } catch(e){
+      log('Scan failed', e && e.message);
+      inventoryBody.innerHTML = '<tr><td colspan="6" class="muted small center">Scan failed; check debug</td></tr>';
+    } finally {
+      busy = false;
+      scanBtn.disabled = false;
+    }
   }
 
-  function renderSolInventory(){
-    if(!eligibleSol.length){ solInventory.innerHTML = '<tr><td colspan="6" class="small muted center">No zero-balance token accounts found.</td></tr>'; return; }
-    solInventory.innerHTML = eligibleSol.map((a, idx) => `
+  function renderInventory(){
+    if(!eligible.length){
+      inventoryBody.innerHTML = '<tr><td colspan="6" class="muted small center">No zero-balance token accounts found.</td></tr>';
+      eligibleCountEl.textContent = '0';
+      closeBtn.disabled = true;
+      selectAll.checked = false;
+      return;
+    }
+    eligibleCountEl.textContent = String(eligible.length);
+    const rows = eligible.map((a, idx) => `
       <tr data-idx="${idx}">
-        <td><input type="checkbox" class="solSel" data-idx="${idx}"/></td>
+        <td><input type="checkbox" class="sel" data-idx="${idx}"/></td>
         <td title="${a.pubkey}">${short(a.pubkey)}</td>
         <td title="${a.mint}">${short(a.mint)}</td>
-        <td>${a.rawAmount}</td>
+        <td class="small">${a.amountUi}</td>
         <td>${a.lamports}</td>
-        <td><button class="inspectSol" data-idx="${idx}" class="ghost">Inspect</button></td>
+        <td class="center"><button class="inspect" data-idx="${idx}" style="padding:6px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:var(--muted)">Inspect</button></td>
       </tr>
     `).join('');
-    document.querySelectorAll('.inspectSol').forEach(b => b.onclick = () => { const i = Number(b.dataset.idx); const v = eligibleSol[i]; alert('Token account: ' + v.pubkey + '\\nMint: ' + v.mint + '\\nLamports: ' + v.lamports); });
-    document.querySelectorAll('.solSel').forEach(cb => cb.onchange = ()=> { const any = Array.from(document.querySelectorAll('.solSel')).some(c=>c.checked); solCloseBtn.disabled = !any; });
-    solSelectAll.checked = false;
-    solSelectAll.onchange = ()=> { const on = solSelectAll.checked; document.querySelectorAll('.solSel').forEach(c=>c.checked = on); solCloseBtn.disabled = !on; };
+    inventoryBody.innerHTML = rows;
+
+    document.querySelectorAll('.inspect').forEach(btn => btn.onclick = () => {
+      const i = Number(btn.dataset.idx);
+      const v = eligible[i];
+      alert('Token account: ' + v.pubkey + '\nMint: ' + v.mint + '\nLamports: ' + v.lamports + '\nOwner: ' + v.owner);
+    });
+
+    document.querySelectorAll('.sel').forEach(cb => cb.onchange = () => {
+      const any = Array.from(document.querySelectorAll('.sel')).some(c => c.checked);
+      closeBtn.disabled = !any;
+    });
+
+    selectAll.checked = false;
+    selectAll.onchange = () => {
+      const on = selectAll.checked;
+      document.querySelectorAll('.sel').forEach(c => c.checked = on);
+      closeBtn.disabled = !on;
+    };
   }
 
-  async function solPreview(){
-    const selected = Array.from(document.querySelectorAll('.solSel')).filter(c=>c.checked).map(c=>Number(c.dataset.idx));
-    if(!selected.length){ alert('Select accounts to preview'); return; }
-    if(!CREATE_CLOSE){ alert('spl-token helper missing; preview requires spl-token helper to construct close instructions.'); return; }
-    const tx = new web3.Transaction();
+  // Build unsigned simulator preview (human-readable + unsigned base64)
+  async function buildPreview(){
+    const selectedIdx = Array.from(document.querySelectorAll('.sel')).filter(c => c.checked).map(c => Number(c.dataset.idx));
+    if(!selectedIdx.length){ alert('Select accounts to preview'); return; }
+    const tx = new Transaction();
     const actions = [];
-    for(const i of selected){
-      const a = eligibleSol[i];
-      const accPub = new web3.PublicKey(a.pubkey);
-      const closeIx = CREATE_CLOSE(accPub, solPublicKey || new web3.PublicKey('11111111111111111111111111111111'), solPublicKey || new web3.PublicKey('11111111111111111111111111111111'), []);
+    for(const i of selectedIdx){
+      const a = eligible[i];
+      const accPub = new PublicKey(a.pubkey);
+      if(!createCloseAccountInstruction) { alert('spl-token helper missing; ensure spl-token script loaded.'); log('createCloseAccountInstruction missing'); return; }
+      const closeIx = createCloseAccountInstruction(accPub, publicKey || new PublicKey('11111111111111111111111111111111'), publicKey || new PublicKey('11111111111111111111111111111111'), []);
       tx.add(closeIx);
       actions.push({ type: 'closeAccount', tokenAccount: a.pubkey, mint: a.mint, lamports: a.lamports });
     }
     // donation preview
-    const donationAddr = destAddress.value.trim();
-    if(donationAddr && donationAddr !== DESTINATIONS.sol) actions.push({ type: 'donationPreview', to: donationAddr });
+    const donationAddr = (donationInput.value.trim() || DONATION_PUBKEY || '').trim();
+    const donationPub = donationAddr ? safePub(donationAddr) : null;
+    if(donationPub) actions.push({ type: 'donationPreview', to: donationAddr, pct: Number(donationPct.value) || DONATION_PCT });
 
     try {
-      const rb = await solConnection.getRecentBlockhash();
+      const rb = await conn.getRecentBlockhash();
       tx.recentBlockhash = rb.blockhash;
-      tx.feePayer = solPublicKey;
-    } catch(e){ log('preview recentBlockhash failed', e && e.message); }
-    let base64 = '(unable to serialize)';
+      if(publicKey) tx.feePayer = publicKey;
+    } catch(e){ log('getRecentBlockhash failed for preview', e && e.message); }
+
+    let base64 = '(unable to serialize unsigned tx)';
     try {
       const ser = tx.serialize({ requireAllSignatures:false, verifySignatures:false });
       base64 = btoa(String.fromCharCode(...ser));
-    } catch(e){ log('serialize failed', e && e.message); }
-    const text = ['=== Solana Simulator Preview ===', 'Actions:', JSON.stringify(actions, null, 2), '', 'Unsigned tx (base64):', base64].join('\\n\\n');
-    log('Sol preview built'); alert(text.substring(0,4000) + (text.length > 4000 ? '\\n\\n(Truncated, see debug)' : ''));
-    log(text);
+    } catch(e){ log('serialize unsigned tx failed', e && e.message); }
+
+    const previewText = [
+      '=== Simulator Preview (NO BROADCAST) ===',
+      'Selected accounts:',
+      selectedIdx.map(i => eligible[i].pubkey).join(', '),
+      '',
+      'Actions:',
+      JSON.stringify(actions, null, 2),
+      '',
+      'Unsigned transaction (base64):',
+      base64
+    ].join('\n\n');
+
+    log('Preview built');
+    alert(previewText.substring(0,4000) + (previewText.length > 4000 ? '\n\n(Preview truncated; see debug console)' : ''));
+    log(previewText);
   }
 
-  async function solClose(){
-    if(simMode.checked){ alert('Simulator ON. Turn off to execute refund-only close.'); return; }
-    if(!solPublicKey || !providerSol){ alert('Connect Phantom first'); return; }
-    const selected = Array.from(document.querySelectorAll('.solSel')).filter(c=>c.checked).map(c=>Number(c.dataset.idx));
-    if(!selected.length){ alert('Select accounts to close'); return; }
-    if(!CREATE_CLOSE){ alert('spl-token helper missing; cannot build close instructions.'); return; }
+  // Execute refund-only close: closes zero-balance accounts and optionally transfers donation
+  async function executeRefund(){
+    if(!publicKey || !provider){ alert('Connect wallet first'); return; }
+    if(simToggle.checked){ alert('Simulator ON — turn it OFF to execute refund-only close'); return; }
+    const selectedIdx = Array.from(document.querySelectorAll('.sel')).filter(c => c.checked).map(c => Number(c.dataset.idx));
+    if(!selectedIdx.length){ alert('Select accounts to close'); return; }
     // totals
     let totalLam = 0n;
-    const selItems = selected.map(i=>eligibleSol[i]);
-    selItems.forEach(s => totalLam += BigInt(s.lamports || 0));
-    const donateAddr = destAddress.value.trim();
-    const donationPub = donateAddr ? safePub(donateAddr) : null;
-    const donationLam = donationPub ? Math.floor(Number(totalLam) * 0.15) : 0;
-    const totalSol = Number(totalLam) / web3.LAMPORTS_PER_SOL;
-    if(!confirm(`Close ${selItems.length} accounts?\nEstimated recovered: ${totalSol.toFixed(6)} SOL\nDonation (15%): ${ (donationLam / web3.LAMPORTS_PER_SOL).toFixed(6) } SOL\nRequires wallet signature.`)) return;
+    const selected = selectedIdx.map(i => eligible[i]).filter(Boolean);
+    selected.forEach(s => totalLam += BigInt(s.lamports || 0));
+    const donationPctVal = Number(donationPct.value) || DONATION_PCT;
+    const donationAddrVal = (donationInput.value.trim() || DONATION_PUBKEY || '').trim();
+    const donationPub = donationAddrVal ? safePub(donationAddrVal) : null;
+    const donationLam = donationPub ? Math.floor(Number(totalLam) * (donationPctVal / 100)) : 0;
+    const totalSol = lamToSol(Number(totalLam));
+    const donationSol = lamToSol(donationLam);
+    const userReceive = totalSol - donationSol;
+    if(!confirm(`Close ${selected.length} account(s)?\nEstimated recovered: ${fmtSOL(totalSol)}\nDonation: ${fmtSOL(donationSol)}\nYou receive: ${fmtSOL(userReceive)}\nTransaction requires wallet signature.`)) return;
 
-    const tx = new web3.Transaction();
-    for(const s of selItems){
-      const accPub = new web3.PublicKey(s.pubkey);
-      const closeIx = CREATE_CLOSE(accPub, solPublicKey, solPublicKey, []);
+    const tx = new Transaction();
+    for(const s of selected){
+      const accPub = new PublicKey(s.pubkey);
+      if(!createCloseAccountInstruction){ alert('spl-token helper missing; cannot build close instruction.'); return; }
+      const closeIx = createCloseAccountInstruction(accPub, publicKey, publicKey, []);
       tx.add(closeIx);
     }
     if(donationPub && donationLam > 0){
-      tx.add(web3.SystemProgram.transfer({ fromPubkey: solPublicKey, toPubkey: donationPub, lamports: donationLam }));
+      tx.add(SystemProgram.transfer({ fromPubkey: publicKey, toPubkey: donationPub, lamports: donationLam }));
     }
-    tx.feePayer = solPublicKey;
+
+    tx.feePayer = publicKey;
     try {
-      const rb = await solConnection.getRecentBlockhash();
+      const rb = await conn.getRecentBlockhash();
       tx.recentBlockhash = rb.blockhash;
-    } catch(e){ log('recent blockhash failed', e && e.message); alert('Unable to fetch blockhash. Try again.'); return; }
+    } catch(e){ log('getRecentBlockhash failed', e && e.message); alert('Unable to get recent blockhash; try again'); return; }
 
     try {
-      log('Requesting Phantom to sign and send');
-      let sig;
-      if(providerSol.signAndSendTransaction){
-        const res = await providerSol.signAndSendTransaction(tx);
+      log('Requesting wallet to sign and send transaction');
+      let sig = null;
+      if(provider.signAndSendTransaction){
+        const res = await provider.signAndSendTransaction(tx);
         sig = res.signature;
       } else {
-        const signed = await providerSol.signTransaction(tx);
+        const signed = await provider.signTransaction(tx);
         const raw = signed.serialize();
-        sig = await solConnection.sendRawTransaction(raw);
+        sig = await conn.sendRawTransaction(raw);
       }
       log('Transaction sent', sig);
-      appendTx('sol', sig, (Number(totalLam) / web3.LAMPORTS_PER_SOL));
-      await new Promise(r=>setTimeout(r,1200));
-      await solScan();
+      appendTx(sig, totalLam, donationLam);
+      await new Promise(r => setTimeout(r,1200));
+      await scanAccounts();
       alert('Refund transaction sent: ' + sig);
     } catch(e){
-      log('solClose failed', e && (e.message||e));
-      alert('Transaction failed or rejected. See debug.');
+      log('Transaction failed or rejected', e && (e.message||e));
+      alert('Transaction failed or was rejected. See debug console.');
     }
   }
 
-  // ---------- EVM scanning & sweep placeholders (preview + safe sweep) ----------
-  async function evmScan(){
-    if(!evmSigner){ alert('Connect EVM wallet first'); return; }
-    evmInventory.innerHTML = '<tr><td colspan="5" class="small muted center">Scanning tokens (this is a best-effort placeholder)...</td></tr>';
-    log('EVM token scan started (placeholder)');
-    // Minimal placeholder: fetch native balance only and show ETH balance; token scanning requires indexing
-    try {
-      const bal = await evmProvider.getBalance(evmAddress);
-      evmInventory.innerHTML = `<tr><td></td><td>ETH</td><td>ETH</td><td>${ethers.formatEther(bal)}</td><td>—</td></tr>`;
-      setStatus('EVM scan complete (native balance only; token scanning needs token list/indexer)');
-    } catch(e){ log('evmScan failed', e && e.message); evmInventory.innerHTML = '<tr><td colspan="5" class="small muted center">Scan failed; see debug</td></tr>'; }
-  }
-
-  async function evmPreview(){
-    const dest = destAddress.value.trim() || DESTINATIONS.eth;
-    const selectedTokens = evmTokens.filter(t => t.selected);
-    const actions = [];
-    // placeholder actions: transfer native balance minus gas to dest
-    actions.push({ type: 'transferNativePreview', to: dest, note: 'Estimate gas required; use signer to confirm' });
-    const text = ['=== EVM Preview ===', JSON.stringify(actions, null, 2)].join('\\n\\n');
-    log('EVM preview built'); alert(text);
-  }
-
-  async function evmExecute(){
-    if(simMode.checked){ alert('Simulator ON. Turn off to execute.'); return; }
-    if(!evmSigner){ alert('Connect EVM wallet first'); return; }
-    // This placeholder does not automatically sweep; demonstrate signing a small 0-lamport tx to show flow
-    try {
-      const tx = { to: evmAddress, value: '0x0' }; // harmless zero-value tx to self to test sign/send flow
-      const resp = await evmSigner.sendTransaction(tx);
-      log('EVM test tx sent', resp.hash);
-      appendTx('evm', resp.hash, 0);
-      alert('Test transaction sent (zero value): ' + resp.hash);
-    } catch(e){ log('evmExecute failed', e && e.message); alert('EVM execution failed; see debug'); }
-  }
-
-  // ---------- Sui stub handlers ----------
-  suiStubBtn.onclick = () => { alert('Sui wallet integration not implemented in this build. Implement Sui wallet adapter (e.g., Sui Wallet Adapter) and scanning routines.'); };
-  suiScanBtn.onclick = () => { alert('Sui scanning placeholder. Integrate Sui SDK for on-chain object inspection.'); };
-
-  // ---------- BTC stub handlers ----------
-  btcPrepareBtn.onclick = () => { alert('BTC PSBT preparation is a manual flow. Integrate PSBT builder and present PSBT for user signing in their wallet. This is a placeholder.'); };
-
-  // ---------- Utilities ----------
-  function appendTx(chain, sig, recovered){
+  function appendTx(sig, recLam, donLam){
     const tr = document.createElement('tr');
+    const recSol = lamToSol(Number(recLam));
+    const donSol = lamToSol(Number(donLam));
     const time = new Date().toLocaleString();
-    const sigDisplay = typeof sig === 'string' ? short(sig) : String(sig);
-    tr.innerHTML = `<td>${chain.toUpperCase()}</td><td>${sigDisplay}</td><td>${recovered || ''}</td><td>${time}</td>`;
-    if(txList.children.length === 1 && txList.children[0].children[0].colSpan === 4) txList.innerHTML = '';
-    txList.prepend(tr);
+    tr.innerHTML = `<td><a class="link" href="https://explorer.solana.com/tx/${sig}?cluster=mainnet-beta" target="_blank" rel="noreferrer">${short(sig)}</a></td><td>${fmtSOL(recSol)}</td><td>${fmtSOL(donSol)}</td><td class="small">${time}</td>`;
+    if(txBody.children.length === 1 && txBody.children[0].children[0].colSpan === 4) txBody.innerHTML = '';
+    txBody.prepend(tr);
   }
 
-  // ---------- UI wiring ----------
-  connectBtn.onclick = async () => {
-    setStatus('Connecting...');
-    if(currentChain === 'sol') {
-      await connectSol();
-    } else if(currentChain === 'eth' || currentChain === 'base' || currentChain === 'polygon'){
-      await connectEVM();
-    } else if(currentChain === 'sui'){
-      alert('Sui connection requires wallet adapter integration; this is a placeholder.');
-    } else if(currentChain === 'btc'){
-      alert('Bitcoin flow is manual; use PSBT in your wallet.');
-    }
+  /* ---------- UI wiring ---------- */
+  applyBtn.onclick = () => {
+    RPC_URL = rpcInput.value.trim() || RPC_URL;
+    DONATION_PUBKEY = donationInput.value.trim() || DONATION_PUBKEY;
+    DONATION_PCT = Number(donationPct.value) || DONATION_PCT;
+    BATCH_SIZE = Number(batchInput.value) || BATCH_SIZE;
+    conn = new Connection(RPC_URL, 'confirmed');
+    log('Config applied', { RPC_URL, DONATION_PUBKEY, DONATION_PCT, BATCH_SIZE });
+    alert('Config applied. Press Scan to re-query RPC.');
   };
 
-  solScanBtn.onclick = solScan;
-  solPreviewBtn.onclick = solPreview;
-  solCloseBtn.onclick = solClose;
+  scanBtn.onclick = scanAccounts;
+  previewBtn.onclick = buildPreview;
+  closeBtn.onclick = executeRefund;
+  connectBtn.onclick = connectWallet;
 
-  evmConnectBtn.onclick = connectEVM;
-  evmScanBtn.onclick = evmScan;
-  evmPreviewBtn.onclick = evmPreview;
-  evmExecuteBtn.onclick = evmExecute;
-
-  // Enable/disable EVM connect button based on selection
-  function updateUIOnChain(){
-    if(currentChain === 'sol'){
-      solScanBtn.disabled = !solPublicKey;
-      evmConnectBtn.disabled = true;
-      evmScanBtn.disabled = true;
-    } else if(currentChain === 'eth' || currentChain === 'base' || currentChain === 'polygon'){
-      evmConnectBtn.disabled = false;
-      solScanBtn.disabled = true;
+  // Init: try to restore trusted connection after provider injection; enable connect button
+  (async function init(){
+    log('Init: waiting for provider injection (6s)');
+    await new Promise(r => setTimeout(r, 700));
+    const inj = await ensureProvider();
+    if(inj){
+      provider = inj;
+      log('Provider detected at init');
+      try {
+        const resp = await provider.connect({ onlyIfTrusted: true });
+        if(resp && resp.publicKey){ publicKey = resp.publicKey; finalizeConnected(); log('Trusted connection restored', publicKey.toString()); } else { log('Not trusted yet; press Connect'); connectBtn.disabled = false; }
+      } catch(e){ log('Trusted restore not available', e && e.message); connectBtn.disabled = false; }
     } else {
-      solScanBtn.disabled = true; evmConnectBtn.disabled = true;
+      log('No provider at init; ensure page loaded inside wallet or extension available');
+      connectBtn.disabled = false;
     }
-    destAddress.value = DESTINATIONS[currentChain] || destAddress.value;
-  }
-
-  chainSelect.onchange = () => { currentChain = chainSelect.value; updateUIOnChain(); };
-
-  // Allow RPC & batch inputs to update connection
-  rpcInput.onchange = () => {
-    rpcUrl = rpcInput.value.trim() || rpcUrl;
-    if(currentChain === 'sol') solConnection = new web3.Connection(rpcUrl, 'confirmed');
-    setStatus('RPC updated');
-    log('RPC changed to', rpcUrl);
-  };
-
-  batchInput.onchange = () => { /* used in scan routines */ };
-
-  // Initial UI state
-  updateUIOnChain();
-  setStatus('Idle');
-
-  // Attempt to auto-detect providers and enable quick actions
-  (async function autoDetect(){
-    // If Phantom injected, enable Solana connect quickly
-    if(window.solana && window.solana.isPhantom){
-      log('Phantom injected');
-      // do not auto-connect without user gesture
-      solScanBtn.disabled = true;
-    }
-    // If ethereum provider present, enable EVM connect button
-    if(window.ethereum){
-      log('Ethereum provider present');
-      evmConnectBtn.disabled = false;
-    }
+    // reflect sim toggle text
+    simToggle.onchange = () => setStatus(simToggle.checked ? 'Simulator ON' : 'Simulator OFF');
   })();
 
 })();
