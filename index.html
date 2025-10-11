@@ -1,11 +1,11 @@
-Updated complete index.html with full scan, accurate rent calculation, batch close, donation split, and transaction feedback
+Updated index.html with robust wallet connect (Phantom detection, trusted restore, and deep-link fallback)
 
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>RefundYourSOL — Clone (Full)</title>
+  <title>RefundYourSOL — Clone (Connect Fix)</title>
   <style>
     :root{
       --bg:#071024;--card:#071427;--muted:#94a3b8;--accent:#60a5fa;--success:#34d399;--danger:#fb7185;
@@ -52,13 +52,13 @@ Updated complete index.html with full scan, accurate rent calculation, batch clo
         </svg>
       </div>
       <div>
-        <h1>RefundYourSOL — Clone (Full)</h1>
-        <p class="lead">Scan connected wallet for empty SPL token accounts, show exact rent, and close them in a single signed transaction. 15% donation split applied to recovered SOL.</p>
+        <h1>RefundYourSOL — Clone (Connect Fix)</h1>
+        <p class="lead">This build improves wallet connect reliability: restores trusted connections, waits for provider injection, and falls back to Phantom deep-link when necessary.</p>
       </div>
     </header>
 
     <div class="controls">
-      <button id="connectBtn" class="primary">Connect Phantom</button>
+      <button id="connectBtn" class="primary" aria-live="polite">Connect Wallet</button>
       <button id="scanBtn" disabled>Scan Token Accounts</button>
       <button id="closeSelectedBtn" disabled>Close Selected</button>
       <div style="margin-left:auto" class="muted small" id="rpcInfo">RPC: mainnet-beta</div>
@@ -85,7 +85,7 @@ Updated complete index.html with full scan, accurate rent calculation, batch clo
       </div>
 
       <div class="notice">
-        Uses public RPC to parse token accounts. The dApp will only attempt to close zero-balance token accounts you own. You must approve transactions in Phantom.
+        Uses public RPC to parse token accounts. Only zero-balance token accounts owned by you will be closed. You must approve any transaction in your wallet.
       </div>
     </div>
 
@@ -117,7 +117,7 @@ Updated complete index.html with full scan, accurate rent calculation, batch clo
       </table>
 
       <div style="display:flex;gap:10px;margin-top:12px;align-items:center;flex-wrap:wrap">
-        <div class="muted small">Recovered lamports are sent to your wallet; 15% is sent to the donation address before final user-visible balance update.</div>
+        <div class="muted small">Recovered lamports are returned to your wallet; 15% is sent to the donation address before the final balance is visible on-chain.</div>
         <div style="margin-left:auto" class="small muted">Network: <strong id="networkLabel">mainnet-beta</strong></div>
       </div>
     </div>
@@ -146,28 +146,24 @@ Updated complete index.html with full scan, accurate rent calculation, batch clo
     </div>
 
     <div class="footer">
-      <div class="danger-box">Warning: closing a token account is irreversible. Only close accounts you own and that have zero token balance.</div>
+      <div class="danger-box">Warning: closing a token account is irreversible. Only close token accounts you own and that have zero token balance.</div>
       <div style="margin-top:8px" class="muted small">Educational clone. Use at your own risk.</div>
     </div>
   </div>
 
-  <!-- Solana libs (IIFE builds) -->
   <script src="https://unpkg.com/@solana/web3.js@1.76.0/lib/index.iife.min.js"></script>
   <script src="https://unpkg.com/@solana/spl-token@0.3.5/lib/index.iife.js"></script>
 
   <script>
-    // Config
     const RPC_URL = 'https://api.mainnet-beta.solana.com';
     const DONATION_RATE = 0.15;
-    const DONATION_ADDRESS = 'FmDonate11111111111111111111111111111111111'; // replace with real donation address
+    const DONATION_ADDRESS = 'FmDonate11111111111111111111111111111111111';
 
-    // Imports from IIFE globals
     const { Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } = solanaWeb3;
     const { createCloseAccountInstruction, TOKEN_PROGRAM_ID } = splToken;
-
     const connection = new Connection(RPC_URL, 'confirmed');
 
-    // UI references
+    // UI refs
     const connectBtn = document.getElementById('connectBtn');
     const scanBtn = document.getElementById('scanBtn');
     const closeSelectedBtn = document.getElementById('closeSelectedBtn');
@@ -185,34 +181,136 @@ Updated complete index.html with full scan, accurate rent calculation, batch clo
 
     let provider = null;
     let publicKey = null;
-    let foundAccounts = []; // objects: {pubkey, mint, owner, uiAmountString, lamports}
+    let foundAccounts = [];
 
     function shortKey(s){ return String(s).slice(0,4) + '…' + String(s).slice(-4); }
     function lamportsToSol(l){ return Number(l) / LAMPORTS_PER_SOL; }
     function fmtSOL(n){ return Number(n).toFixed(6) + ' SOL'; }
     function showMessage(m){ actionStatus.textContent = m; }
 
-    // Connect
-    async function tryConnect(){
-      if (window.solana && window.solana.isPhantom){
+    // Wait for wallet provider injection (Phantom injects window.solana) with timeout
+    function waitForPhantom(timeout = 3000) {
+      return new Promise((resolve) => {
+        if (window.solana && window.solana.isPhantom) return resolve(window.solana);
+        let resolved = false;
+        const onInjected = () => {
+          if (!resolved) { resolved = true; resolve(window.solana); }
+        };
+        window.addEventListener('photon#initialized', onInjected, { once: true });
+        const interval = setInterval(() => {
+          if (window.solana && window.solana.isPhantom) {
+            clearInterval(interval);
+            window.removeEventListener('photon#initialized', onInjected);
+            if (!resolved) { resolved = true; resolve(window.solana); }
+          }
+        }, 200);
+        setTimeout(() => {
+          clearInterval(interval);
+          window.removeEventListener('photon#initialized', onInjected);
+          if (!resolved) { resolved = true; resolve(null); }
+        }, timeout);
+      });
+    }
+
+    // Deep-link fallback for mobile/embedded webviews when provider isn't injected
+    function openPhantomDeepLink() {
+      // Phantom deep link format; on iOS this opens the app if installed
+      const phantomUrl = `https://phantom.app/ul/v1/connect?app_url=${encodeURIComponent(location.origin)}&redirect_link=${encodeURIComponent(location.href)}`;
+      // Also attempt universal link
+      window.open(phantomUrl, '_blank');
+    }
+
+    async function ensureProvider() {
+      // If provider already stored and available, return it
+      if (provider && window.solana && window.solana.isPhantom) {
         provider = window.solana;
-        try {
-          const resp = await provider.connect({ onlyIfTrusted: false });
-          publicKey = resp.publicKey;
-          walletAddrEl.textContent = publicKey.toString();
-          connectBtn.textContent = 'Connected';
-          scanBtn.disabled = false;
-          showMessage('Wallet connected');
-        } catch (err){
-          console.error('connect', err);
-          showMessage('Connection rejected');
+        return provider;
+      }
+      // wait briefly for injection (useful in some mobile contexts)
+      const injected = await waitForPhantom(2500);
+      if (injected) {
+        provider = injected;
+        return provider;
+      }
+      return null;
+    }
+
+    async function tryConnect() {
+      connectBtn.disabled = true;
+      connectBtn.textContent = 'Connecting...';
+      showMessage('Detecting wallet provider');
+
+      try {
+        const p = await ensureProvider();
+        if (!p) {
+          connectBtn.textContent = 'Open Phantom';
+          showMessage('Phantom not detected, opening deep-link');
+          // fallback: open phantom deep link for mobile/webview
+          openPhantomDeepLink();
+          connectBtn.disabled = false;
+          return;
         }
-      } else {
-        alert('Phantom not found. Install Phantom or use compatible wallet.');
+
+        provider = p;
+
+        // Attempt to restore trusted connection first
+        try {
+          const resp = await provider.connect({ onlyIfTrusted: true });
+          if (resp && resp.publicKey) {
+            publicKey = resp.publicKey;
+            onConnected();
+            return;
+          }
+        } catch (e) {
+          // not trusted or error; proceed to explicit connect
+        }
+
+        // Explicit connect flow
+        try {
+          const resp = await provider.connect();
+          if (resp && resp.publicKey) {
+            publicKey = resp.publicKey;
+            onConnected();
+            return;
+          }
+          throw new Error('No publicKey returned');
+        } catch (err) {
+          console.error('User rejected or connect failed', err);
+          showMessage('Connection rejected');
+          connectBtn.textContent = 'Connect Wallet';
+          connectBtn.disabled = false;
+        }
+      } catch (err) {
+        console.error('connect flow failed', err);
+        showMessage('Connect error');
+        connectBtn.textContent = 'Connect Wallet';
+        connectBtn.disabled = false;
       }
     }
 
-    // Scan: get parsed token accounts, then fetch accountInfo to get lamports
+    function onConnected() {
+      walletAddrEl.textContent = publicKey.toString();
+      connectBtn.textContent = 'Connected';
+      connectBtn.disabled = true;
+      scanBtn.disabled = false;
+      showMessage('Wallet connected');
+    }
+
+    // Auto restore if already trusted (run on load)
+    async function tryRestoreTrusted() {
+      const p = await ensureProvider();
+      if (!p) return;
+      provider = p;
+      try {
+        const resp = await provider.connect({ onlyIfTrusted: true });
+        if (resp && resp.publicKey) {
+          publicKey = resp.publicKey;
+          onConnected();
+        }
+      } catch (_) {}
+    }
+
+    // Scanning and closing functions (kept intentionally similar to prior full implementation)
     async function scanAccounts(){
       if (!publicKey) { showMessage('Not connected'); return; }
       scanBtn.disabled = true;
@@ -225,48 +323,40 @@ Updated complete index.html with full scan, accurate rent calculation, batch clo
         const parsed = await connection.getParsedTokenAccountsByOwner(publicKey, { programId: TOKEN_PROGRAM_ID });
         const tokenAccounts = parsed.value || [];
 
-        // Batch fetch account infos for lamports to avoid per-account RPC throttle
+        // Batch fetch account infos to read lamports
         const pubkeys = tokenAccounts.map(v => new PublicKey(v.pubkey));
         const uniquePubkeys = [...new Map(pubkeys.map(p => [p.toBase58(), p])).values()];
-
-        // Fetch account infos in batches of 100
-        const batchSize = 100;
         const accountInfos = {};
+        const batchSize = 100;
         for (let i=0;i<uniquePubkeys.length;i+=batchSize){
           const slice = uniquePubkeys.slice(i,i+batchSize);
           const infos = await connection.getMultipleAccountsInfo(slice);
           for (let j=0;j<slice.length;j++){
-            const k = slice[j].toBase58();
-            accountInfos[k] = infos[j];
+            accountInfos[slice[j].toBase58()] = infos[j];
           }
         }
 
-        // Build foundAccounts list: zero token amount, owner matches publicKey
         for (const v of tokenAccounts){
-          const parsedInfo = v.account.data.parsed?.info;
-          if (!parsedInfo) continue;
-          const uiAmount = parsedInfo.tokenAmount?.uiAmount || 0;
-          const amountRaw = parsedInfo.tokenAmount?.amount || "0";
+          const info = v.account.data.parsed?.info;
+          if (!info) continue;
+          const amountRaw = info.tokenAmount?.amount || "0";
           const isZero = BigInt(amountRaw) === 0n;
           const accPub = v.pubkey;
-          const accInfoOnchain = accountInfos[accPub];
-          if (!accInfoOnchain) continue;
-          const lamports = accInfoOnchain.lamports;
-          // filter only zero-balance token accounts owned by connected wallet
-          if (isZero && parsedInfo.owner === publicKey.toString()){
+          const onchain = accountInfos[accPub];
+          if (!onchain) continue;
+          const lamports = onchain.lamports;
+          if (isZero && info.owner === publicKey.toString()){
             foundAccounts.push({
               pubkey: accPub,
-              mint: parsedInfo.mint,
-              owner: parsedInfo.owner,
-              uiAmountString: String(uiAmount),
-              lamports: lamports
+              mint: info.mint,
+              owner: info.owner,
+              uiAmountString: String(info.tokenAmount?.uiAmount || 0),
+              lamports
             });
           }
         }
 
-        // Sort by lamports desc (largest refunds first)
         foundAccounts.sort((a,b) => b.lamports - a.lamports);
-
         renderAccounts();
         showMessage('Scan complete');
       } catch (e){
@@ -289,7 +379,6 @@ Updated complete index.html with full scan, accurate rent calculation, batch clo
         return;
       }
 
-      // totals
       let totalLamports = 0n;
       for (const a of foundAccounts) totalLamports += BigInt(a.lamports);
       const totalSol = lamportsToSol(Number(totalLamports));
@@ -299,9 +388,7 @@ Updated complete index.html with full scan, accurate rent calculation, batch clo
       emptyCountEl.textContent = String(foundAccounts.length);
       closeSelectedBtn.disabled = false;
 
-      // rows
-      const rows = foundAccounts.map((a, idx) => {
-        return `
+      const rows = foundAccounts.map((a, idx) => `
         <tr data-idx="${idx}">
           <td><input type="checkbox" class="selRow" data-idx="${idx}"/></td>
           <td title="${a.pubkey}">${shortKey(a.pubkey)}</td>
@@ -311,8 +398,8 @@ Updated complete index.html with full scan, accurate rent calculation, batch clo
           <td class="small">${a.lamports}</td>
           <td class="small">${lamportsToSol(a.lamports).toFixed(6)} SOL</td>
           <td class="center small"><button class="closeBtn" data-idx="${idx}">Close</button></td>
-        </tr>`;
-      }).join('');
+        </tr>
+      `).join('');
       accountsBody.innerHTML = rows;
       attachHandlers();
     }
@@ -339,18 +426,13 @@ Updated complete index.html with full scan, accurate rent calculation, batch clo
       };
     }
 
-    // Build a transaction that:
-    // 1) Closes selected token accounts sending lamports to user's wallet
-    // 2) After close, transfer donation portion to DONATION_ADDRESS (separate instruction)
-    // We compute recovered lamports, then create a transfer of donation lamports to donation address.
     async function closeAccounts(indexes){
-      if (!publicKey || !provider) { showMessage('No wallet'); return; }
+      if (!publicKey || !provider) { showMessage('No wallet connected'); return; }
       showMessage('Preparing transaction');
       scanBtn.disabled = true;
       closeSelectedBtn.disabled = true;
 
       try {
-        // compute total lamports recovered by closing these accounts
         let totalLamports = 0n;
         const tx = new Transaction();
         for (const idx of indexes){
@@ -358,50 +440,36 @@ Updated complete index.html with full scan, accurate rent calculation, batch clo
           if (!a) continue;
           totalLamports += BigInt(a.lamports);
           const tokenAccountPub = new PublicKey(a.pubkey);
-          // createCloseAccountInstruction(tokenAccount, destination, authority, signers)
-          const closeIx = createCloseAccountInstruction(
-            tokenAccountPub,
-            publicKey, // destination of remaining lamports
-            publicKey, // authority (owner) who can close
-            [] // signers (none)
-          );
+          const closeIx = createCloseAccountInstruction(tokenAccountPub, publicKey, publicKey, []);
           tx.add(closeIx);
         }
 
-        // If there's a donation, add a SOL transfer from user to donation address.
-        // We need to compute donation lamports = floor(totalLamports * DONATION_RATE)
         const donationLamports = Math.floor(Number(totalLamports) * DONATION_RATE);
         if (donationLamports > 0){
-          const donateIx = SystemProgram.transfer({
+          tx.add(SystemProgram.transfer({
             fromPubkey: publicKey,
             toPubkey: new PublicKey(DONATION_ADDRESS),
             lamports: donationLamports
-          });
-          tx.add(donateIx);
+          }));
         }
 
-        // Set fee payer & recent blockhash
         tx.feePayer = publicKey;
         const { blockhash } = await connection.getRecentBlockhash();
         tx.recentBlockhash = blockhash;
 
         showMessage('Requesting signature');
         let txSignature = null;
-
-        // Use new provider.signAndSendTransaction if available
         if (provider.signAndSendTransaction){
           const signed = await provider.signAndSendTransaction(tx);
           txSignature = signed.signature;
         } else {
-          const signedTx = await provider.signTransaction(tx);
-          const raw = signedTx.serialize();
+          const signed = await provider.signTransaction(tx);
+          const raw = signed.serialize();
           txSignature = await connection.sendRawTransaction(raw);
         }
 
         showMessage('Sent: ' + txSignature);
         await appendTxLog(txSignature, totalLamports, donationLamports);
-
-        // small wait, then rescan to refresh UI
         await sleep(1200);
         await scanAccounts();
       } catch (err){
@@ -431,31 +499,29 @@ Updated complete index.html with full scan, accurate rent calculation, batch clo
 
     function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
 
-    // Event wiring
-    connectBtn.onclick = tryConnect;
-    scanBtn.onclick = scanAccounts;
-    closeSelectedBtn.onclick = async () => {
-      const checked = Array.from(document.querySelectorAll('.selRow')).filter(c=>c.checked).map(c=>Number(c.dataset.idx));
-      if (!checked.length){ alert('No accounts selected'); return; }
+    // Wire events
+    connectBtn.addEventListener('click', tryConnect, { passive: true });
+    scanBtn.addEventListener('click', scanAccounts, { passive: true });
+    closeSelectedBtn.addEventListener('click', async () => {
+      const checked = Array.from(document.querySelectorAll('.selRow')).filter(c => c.checked).map(c => Number(c.dataset.idx));
+      if (!checked.length) { alert('No accounts selected'); return; }
       if (!confirm(`Close ${checked.length} account(s)? This is irreversible.`)) return;
       await closeAccounts(checked);
-    };
+    }, { passive: true });
 
-    // Restore trusted connection if present
+    // Try to restore trusted connection and listen for provider inject if late
     (async function init(){
-      if (window.solana && window.solana.isPhantom){
-        try {
-          const resp = await window.solana.connect({ onlyIfTrusted: true });
-          if (resp && resp.publicKey){
-            provider = window.solana;
-            publicKey = resp.publicKey;
-            walletAddrEl.textContent = publicKey.toString();
-            connectBtn.textContent = 'Connected';
-            scanBtn.disabled = false;
-            showMessage('Restored trusted connection');
-          }
-        } catch(_){}
-      }
+      await tryRestoreTrusted();
+      // If provider injects later (some mobile webviews), enable connect button when detected
+      const injectionWatcher = setInterval(() => {
+        if (window.solana && window.solana.isPhantom){
+          provider = window.solana;
+          connectBtn.disabled = false;
+          clearInterval(injectionWatcher);
+        }
+      }, 500);
+      // allow early connect UI
+      connectBtn.disabled = false;
     })();
   </script>
 </body>
